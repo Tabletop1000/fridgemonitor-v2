@@ -11,3 +11,5 @@ trashed_modified_files/
 *.md
 *.png
 .uceditor/
+cmake_iar/
+cmake_llvm/
