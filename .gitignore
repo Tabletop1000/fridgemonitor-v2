@@ -10,3 +10,4 @@ artifacts/
 trashed_modified_files/
 *.md
 *.png
+.uceditor/
