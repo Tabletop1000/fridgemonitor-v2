@@ -1,0 +1,129 @@
+# Silicon Labs Project Configuration Tools: slcp, v0, Component selection file.
+project_name: fm_firmware-v2
+label: fm_firmware
+description: |
+  Read sensors measuring refridgeration data
+category: Example|Wi-Fi
+filter:
+- name: Project Difficulty
+  value:
+  - Beginner
+- name: Wireless Technology
+  value:
+  - Wi-Fi
+package: wifi_app
+quality: production
+readme:
+- path: readme.md
+source:
+- path: app.c
+include:
+- path: .
+  file_list:
+  - path: app.h
+sdk:
+  vendor: silabs
+  id: simplicity_sdk
+  version: 2025.12.3
+toolchain_settings:
+- value: -Wall -Werror
+  option: gcc_compiler_option
+component:
+- package: simplicity_sdk
+  vendor: silabs
+  id: freertos
+- package: simplicity_sdk
+  vendor: silabs
+  id: freertos_heap_4
+- package: simplicity_sdk
+  vendor: silabs
+  id: sl_main
+- package: wiseconnect3_sdk
+  vendor: silabs
+  id: SIWG917M111MGTBA
+- package: wiseconnect3_sdk
+  instance:
+  - channel_1
+  vendor: silabs
+  id: adc_instance
+- package: wiseconnect3_sdk
+  vendor: silabs
+  id: basic_network_config_manager
+- package: wiseconnect3_sdk
+  vendor: silabs
+  id: brd2605a
+- package: wiseconnect3_sdk
+  vendor: silabs
+  id: json_parser
+- package: wiseconnect3_sdk
+  vendor: silabs
+  id: mqtt
+- package: wiseconnect3_sdk
+  vendor: silabs
+  id: network_manager
+- package: wiseconnect3_sdk
+  vendor: silabs
+  id: si91x_memory_default_config
+- package: wiseconnect3_sdk
+  vendor: silabs
+  id: sl_gpio
+- package: wiseconnect3_sdk
+  vendor: silabs
+  id: sl_http_server
+- package: wiseconnect3_sdk
+  vendor: silabs
+  id: sl_si91x_internal_stack
+- package: wiseconnect3_sdk
+  vendor: silabs
+  id: sl_si91x_mem_pool_buffers_with_quota
+- package: wiseconnect3_sdk
+  vendor: silabs
+  id: sl_si91x_nvm3
+- package: wiseconnect3_sdk
+  vendor: silabs
+  id: sl_si91x_rgb_led
+- package: wiseconnect3_sdk
+  instance:
+  - led0
+  vendor: silabs
+  id: sl_si91x_rgb_led_917
+- package: wiseconnect3_sdk
+  vendor: silabs
+  id: sl_si91x_soc_soft_reset
+- package: wiseconnect3_sdk
+  vendor: silabs
+  id: sl_websocket_client
+- package: wiseconnect3_sdk
+  vendor: silabs
+  id: syscalls
+- package: wiseconnect3_sdk
+  vendor: silabs
+  id: wifi
+- package: wiseconnect3_sdk
+  vendor: silabs
+  id: wifi_resources
+- package: wiseconnect3_sdk
+  vendor: silabs
+  id: wiseconnect_common
+other_file:
+- path: resources/readme/access_point_output.png
+- path: resources/readme/setup_soc_ncp.png
+define:
+- name: SL_SI91X_PRINT_DBG_LOG
+- name: SI917_RGB_DRIVER_OLD
+  value: "0"
+configuration:
+- name: SL_BOARD_ENABLE_VCOM 
+  value: '1'
+ui_hints:
+  highlight:
+  - path: readme.md
+    focus: true
+sdk_extension:
+- vendor: silabs
+  id: wiseconnect3_sdk
+  version: 4.0.2
+post_build:
+- path: fm_firmware-v2.slpb
+  profile: wiseconnect_soc
+
