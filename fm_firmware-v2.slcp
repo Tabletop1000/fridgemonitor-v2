@@ -44,6 +44,12 @@ component:
 - package: wiseconnect3_sdk
   instance:
   - channel_1
+  - channel_2
+  - channel_3
+  - channel_4
+  - channel_5
+  - channel_6
+  - channel_7
   vendor: silabs
   id: adc_instance
 - package: wiseconnect3_sdk
@@ -110,10 +116,8 @@ other_file:
 - path: resources/readme/setup_soc_ncp.png
 define:
 - name: SL_SI91X_PRINT_DBG_LOG
-- name: SI917_RGB_DRIVER_OLD
-  value: "0"
 configuration:
-- name: SL_BOARD_ENABLE_VCOM 
+- name: SL_BOARD_ENABLE_VCOM
   value: '1'
 ui_hints:
   highlight:
