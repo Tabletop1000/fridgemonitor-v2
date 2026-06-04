@@ -212,7 +212,7 @@ void fm_ap_sel_start(void)
 //  sl_ip_address_t ip_address            = { 0 };
   sl_http_server_config_t server_config = { 0 };
 
-  printf("\r\nWi-Fi Provisioning demo started\r\n");
+  printf("\r\nWi-Fi Provisioning started\r\n");
   bool finished = false;
   app_state = PROVISIONING_INIT_STATE;
   while (finished == false) {
@@ -223,7 +223,10 @@ void fm_ap_sel_start(void)
 
         // Initialize the Wi-Fi AP interface with default configuration
         status = sl_net_init(SL_NET_WIFI_AP_INTERFACE, (const void *)&sl_wifi_default_ap_configuration, NULL, NULL);
-        if (status != SL_STATUS_OK) {
+        if (status == SL_STATUS_ALREADY_INITIALIZED) {
+          printf("Interface already initialised\r\n");
+        }
+        else if (status != SL_STATUS_OK) {
           printf("Failed to start Wi-Fi AP interface: 0x%lx\r\n", status);
           return;
         }
@@ -246,12 +249,14 @@ void fm_ap_sel_start(void)
         server_config.default_handler = default_handler;
         server_config.handlers_list   = (sl_http_server_handler_t *)provisioning_server_request_handlers;
         server_config.handlers_count  = sizeof(provisioning_server_request_handlers) / sizeof(sl_http_server_handler_t);
+        server_config.client_idle_time = 1; // 1 second timeout
 
         status = sl_http_server_init(&server_handle, &server_config);
         if (status != SL_STATUS_OK) {
           printf("HTTP server init failed:%lx\r\n", status);
           return;
         }
+
         status = sl_http_server_start(&server_handle);
         if (status != SL_STATUS_OK) {
           printf("Server start fail:%lx\r\n", status);
@@ -383,12 +388,18 @@ void fm_ap_sel_start(void)
   }
 }
 
-static sl_status_t ap_connected_event_handler(sl_wifi_event_t event, sl_status_t status_code, void *data, uint32_t data_length, void *arg)
+static sl_status_t ap_connected_event_handler(sl_wifi_event_t event,
+                                              sl_status_t status_code,
+                                              void *data,
+                                              uint32_t data_length,
+                                              void *arg)
 {
   UNUSED_PARAMETER(data_length);
   UNUSED_PARAMETER(arg);
-  UNUSED_PARAMETER(event);
-  UNUSED_PARAMETER(status_code);
+
+  if (SL_WIFI_CHECK_IF_EVENT_FAILED(event)) {
+    return status_code;
+  }
   
   printf("Remote Client connected: ");
   print_mac_address((sl_mac_address_t *)data);
@@ -396,12 +407,18 @@ static sl_status_t ap_connected_event_handler(sl_wifi_event_t event, sl_status_t
   return SL_STATUS_OK;
 }
 
-static sl_status_t ap_disconnected_event_handler(sl_wifi_event_t event, sl_status_t status_code, void *data, uint32_t data_length, void *arg)
+static sl_status_t ap_disconnected_event_handler(sl_wifi_event_t event,
+                                                 sl_status_t status_code,
+                                                 void *data,
+                                                 uint32_t data_length,
+                                                 void *arg)
 {
   UNUSED_PARAMETER(data_length);
   UNUSED_PARAMETER(arg);
-  UNUSED_PARAMETER(event);
-  UNUSED_PARAMETER(status_code);
+
+  if (SL_WIFI_CHECK_IF_EVENT_FAILED(event)) {
+    return status_code;
+  }
 
   printf("Remote Client disconnected: ");
   print_mac_address((sl_mac_address_t *)data);
@@ -560,7 +577,6 @@ static sl_status_t connect_data_handler(sl_http_server_t *handle, sl_http_server
         http_response.expected_data_length = http_response.current_data_length;
         sl_http_server_send_response(handle, &http_response);
         app_state = CONNECTING_STATE; // Transition to the connecting state
-        printf("set http data\n");
     }
   } else {
       // Handle methods other than POST with Method Not Allowed response
