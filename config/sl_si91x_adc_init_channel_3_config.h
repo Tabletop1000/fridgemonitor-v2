@@ -67,15 +67,15 @@ extern "C" {
 #define SL_ADC_CH3_PERIPHERAL_NO                 3
 #endif
 
-// ADC_CH3 P on ULP_GPIO_8/GPIO_72
+// ADC_CH3 P on GPIO_28
 #ifndef SL_ADC_CH3_P_PORT                       
-#define SL_ADC_CH3_P_PORT                        ULP
+#define SL_ADC_CH3_P_PORT                        HP
 #endif
 #ifndef SL_ADC_CH3_P_PIN                        
-#define SL_ADC_CH3_P_PIN                         8
+#define SL_ADC_CH3_P_PIN                         28
 #endif
 #ifndef SL_ADC_CH3_P_LOC                        
-#define SL_ADC_CH3_P_LOC                         42
+#define SL_ADC_CH3_P_LOC                         55
 #endif
 
 // [ADC_CH3_SL_ADC_CH3]$

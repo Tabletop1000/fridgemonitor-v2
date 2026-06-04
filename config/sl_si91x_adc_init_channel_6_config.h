@@ -67,15 +67,15 @@ extern "C" {
 #define SL_ADC_CH6_PERIPHERAL_NO                 6
 #endif
 
-// ADC_CH6 P on ULP_GPIO_5/GPIO_69
+// ADC_CH6 P on GPIO_29
 #ifndef SL_ADC_CH6_P_PORT                       
-#define SL_ADC_CH6_P_PORT                        ULP
+#define SL_ADC_CH6_P_PORT                        HP
 #endif
 #ifndef SL_ADC_CH6_P_PIN                        
-#define SL_ADC_CH6_P_PIN                         5
+#define SL_ADC_CH6_P_PIN                         29
 #endif
 #ifndef SL_ADC_CH6_P_LOC                        
-#define SL_ADC_CH6_P_LOC                         107
+#define SL_ADC_CH6_P_LOC                         103
 #endif
 
 // [ADC_CH6_SL_ADC_CH6]$
