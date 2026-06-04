@@ -42,7 +42,7 @@ extern "C" {
 
 // <o NUMBER_OF_CHANNEL> Number of channel(s) <1-16>
 // <i> Default: 1
-#define NUMBER_OF_CHANNEL 1
+#define NUMBER_OF_CHANNEL 7
 
 // <o SL_ADC_OPERATION_MODE> ADC operation mode
 //   <SL_ADC_FIFO_MODE=> FIFO mode
