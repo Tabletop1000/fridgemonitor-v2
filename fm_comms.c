@@ -404,9 +404,22 @@ void fm_comms_deint()
 {
   if(true == sl_init_status){
     DEBUGOUT("Client is active. Disabling now\n");
+    sl_status_t status;
     mqtt_client_cleanup();
-    sl_wifi_disconnect(SL_WIFI_CLIENT_INTERFACE);
-    sl_net_deinit((sl_net_interface_t)SL_WIFI_CLIENT_INTERFACE);
+    status = sl_wifi_disconnect(SL_WIFI_CLIENT_INTERFACE);
+        if(status != SL_STATUS_OK) {
+      printf("WiFi disconnect failed: 0x%lx\r\n",status);
+    }
+
+    status = sl_net_deinit((sl_net_interface_t)SL_NET_WIFI_CLIENT_INTERFACE);
+    if(status != SL_STATUS_OK) {
+      printf("WiFi denit failed: 0x%lx\r\n",status);
+    }
+
+    status = sl_net_deinit((sl_net_interface_t)SL_NET_WIFI_AP_INTERFACE);
+    if(status != SL_STATUS_OK) {
+      printf("AP deinit failed: 0x%lx\r\n",status);
+    }
 
     sl_init_status = false;
   }
