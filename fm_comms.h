@@ -24,7 +24,7 @@ fm_comms_status fm_comms_connect();
 fm_comms_status fm_comms_mqtt_start();
 fm_comms_status fm_comms_mqtt_stop();
 void fm_comms_deint();
-fm_comms_status fm_comms_publish_data(const char * data, size_t len, const char * topic, size_t topic_len);
+fm_comms_status fm_comms_publish_data(const char * data, size_t len, const char * topic, size_t topic_len, const char * device_id, size_t device_id_len);
 uint8_t fm_is_mqtt_started();
 uint8_t fm_is_wifi_connected();
 

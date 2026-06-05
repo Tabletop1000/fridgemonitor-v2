@@ -26,13 +26,27 @@ typedef enum {
 }ESensorType_t;
 
 typedef struct {
+  float thermistor_1;
+  float thermistor_2;
+  float thermistor_3;
+  float thermistor_4;
+  float pressure_1;
+  float pressure_2;
+  float power;
+}sensors_t;
+
+typedef struct {
   ESensorType_t sensor_type;
   float value;
 }fm_sensor_message_t;
 
 void fm_sensors_init();
 
+void fm_sensors_get_latest(sensors_t* res);
+
 ESensorType_t fm_sensors_read();
+
+void fm_read_all_sensors(void);
 
 void fm_sensors_close();
 

@@ -23,41 +23,38 @@
 #include <stdio.h>
 #include <limits.h>
 
-/*******************************************************************************
-*************************** LOCAL VARIABLES   *******************************
-******************************************************************************/
+/****** DEFINES ******/
+#define PS4_SOC_FREQ          180000000  /*<! PLL out clock 180MHz            */
+#define SOC_PLL_REF_FREQUENCY 40000000   /*<! PLL input REFERENCE clock 40MHZ */
+#define DVISION_FACTOR        0          // Division factor
+#define CHANNEL_SAMPLE_LENGTH 20     // Number of ADC sample collect for operation
+#define ADC_MAX_OP_VALUE      4095       // Maximum output value get from adc data register
+#define ADC_DATA_CLEAR        0xF7FF     // Clear the data if 12th bit is enabled
+#define VREF_VALUE            3.3        // reference voltage
+
+#define ADC_PING_BUFFER_1     0x0000A000 // Start address of Ping for channel_0
+#define ADC_PING_BUFFER_2     0x0000B000 // Start address of Ping for channel_1
+#define ADC_PING_BUFFER_3     0x0000C000 // Start address of Ping for channel_2
+#define ADC_PING_BUFFER_4     0x0000D000 // Start address of Ping for channel_3
+#define ADC_PING_BUFFER_5     0x0000E000 // Start address of Ping for channel_4
+#define ADC_PING_BUFFER_6     0x0000F000 // Start address of Ping for channel_5
+#define ADC_PING_BUFFER_7     0x00010000 // Start address of Ping for channel_6
+
+/******* LOCAL VARIABLES   *********/
 static float vref_value = (float)VREF_VALUE;
 static int16_t adc_output[CHANNEL_SAMPLE_LENGTH];
-static boolean_t ch_flags[NUMBER_OF_CHANNEL];
+static boolean_t ch_flags[NUMBER_OF_CHANNEL] = {0};
 
 static fm_thermistor_handle thermistor_ctx;
 static fm_pressure_handle pressure_ctx;
 static fm_current_handle current_ctx;
+// static sl_adc_clock_config_t adc_clock_config;
+static sensors_t _sensors; // struct representing the latest sensor values, updated by fm_read_all_sensors and read by fm_sensors_get_latest
+static float result[NUMBER_OF_CHANNEL]; // array to hold the latest converted voltage values for each channel, updated by fm_read_all_sensors and read by fm_sensors_get_latest
 
 
-/*******************************************************************************
-**********************  Local Function prototypes   ***************************
-******************************************************************************/
+/*******  Local Function prototypes   ******/
 static void callback_event(uint8_t event_channel, uint8_t event);
-static void default_clock_configuration(void);
-
-// Function to configure clock on powerup
-static void default_clock_configuration(void)
-{
-  // Core Clock runs at 180MHz SOC PLL Clock
-  sl_si91x_clock_manager_m4_set_core_clk(M4_SOCPLLCLK, SOC_PLL_CLK);
-
-  // All peripherals' source to be set to Interface PLL Clock
-  // and it runs at 180MHz
-  sl_si91x_clock_manager_set_pll_freq(INFT_PLL, INTF_PLL_CLK, PLL_REF_CLK_VAL_XTAL);
-
-  // Configure QSPI clock as input source
-  ROMAPI_M4SS_CLK_API->clk_qspi_clk_config(M4CLK,
-                                           QSPI_INTFPLLCLK,
-                                           QSPI_SWALLO_ENABLE,
-                                           QSPI_ODD_DIV_ENABLE,
-                                           QSPI_DIVISION_FACTOR);
-}
 
 /*******************************************************************************
 * Callback event function
@@ -69,20 +66,7 @@ static void default_clock_configuration(void)
 static void callback_event(uint8_t event_channel, uint8_t event)
 {
   if (event == SL_INTERNAL_DMA) {
-    switch (event_channel) {
-      case 0:
-      case 1:
-      case 2:
-      case 3:
-      case 4:
-      case 5:
-      case 6:
-        ch_flags[event_channel] = true;
-        break;
-
-      default:
-        break;
-    }
+    ch_flags[event_channel] = true;
   }
 }
 
@@ -215,76 +199,61 @@ void fm_sensors_init()
   sl_status_t status;
 
   // default clock configuration by application common for whole system
-  default_clock_configuration();
+  // default_clock_configuration();
+  sl_adc_clock_config_t adc_clock_config;
+  adc_clock_config.soc_pll_clock           = PS4_SOC_FREQ;
+  adc_clock_config.soc_pll_reference_clock = SOC_PLL_REF_FREQUENCY;
+  adc_clock_config.division_factor         = DVISION_FACTOR;
+#pragma GCC diagnostic push
+#pragma GCC diagnostic ignored "-Wdeprecated-declarations"
+  status = sl_si91x_adc_configure_clock(&adc_clock_config);
+#pragma GCC diagnostic pop
+  if (status != SL_STATUS_OK) {
+    DEBUGOUT("sl_si91x_adc_clock_configuration: Error Code : %lu \n", status);
+    return;
+  }
+  DEBUGOUT("Clock configuration is successful \n");
 
+  uint32_t ping_pong_addr_list[] =
+  {
+    ADC_PING_BUFFER_1,
+    ADC_PING_BUFFER_2,
+    ADC_PING_BUFFER_3,
+    ADC_PING_BUFFER_4,
+    ADC_PING_BUFFER_5,
+    ADC_PING_BUFFER_6,
+    ADC_PING_BUFFER_7,
+  };
 
-  sl_adc_channel_config.rx_buf[0] =
-    adc_output; /* In order for us to read the data from adc_output in the sample application, ADC will save the data in the rx buffer. */
-  sl_adc_channel_config.chnl_ping_address[0] =
-    ADC_PING_BUFFER_1; /* Starting address of ADC Ping buffer for channel 0 */
-  sl_adc_channel_config.chnl_pong_address[0] =
-    ADC_PING_BUFFER_1
-    + (sl_adc_channel_config.num_of_samples[0]); /* Starting address of ADC Pong buffer for channel 0 */
-
-  sl_adc_channel_config.rx_buf[1] =
-    adc_output; /* In order for us to read the data from adc_output in the sample application, ADC will save the data in the rx buffer. */
-  sl_adc_channel_config.chnl_ping_address[1] =
-    ADC_PING_BUFFER_2; /* Starting address of ADC Ping buffer for channel 1 */
-  sl_adc_channel_config.chnl_pong_address[1] =
-    (ADC_PING_BUFFER_2
-     + (sl_adc_channel_config.num_of_samples[1])); /* Starting address of ADC Pong buffer for channel 1 */
-
-  sl_adc_channel_config.rx_buf[2] =
-    adc_output; /* In order for us to read the data from adc_output in the sample application, ADC will save the data in the rx buffer. */
-  sl_adc_channel_config.chnl_ping_address[2] =
-    ADC_PING_BUFFER_3; /* Starting address of ADC Ping buffer for channel 2 */
-  sl_adc_channel_config.chnl_pong_address[2] =
-    (ADC_PING_BUFFER_3
-     + (sl_adc_channel_config.num_of_samples[2])); /* Starting address of ADC Pong buffer for channel 2 */
-
-  sl_adc_channel_config.rx_buf[3] =
-    adc_output; /* In order for us to read the data from adc_output in the sample application, ADC will save the data in the rx buffer. */
-  sl_adc_channel_config.chnl_ping_address[3] =
-    ADC_PING_BUFFER_4; /* Starting address of ADC Ping buffer for channel 3 */
-  sl_adc_channel_config.chnl_pong_address[3] =
-    (ADC_PING_BUFFER_4
-     + (sl_adc_channel_config.num_of_samples[3])); /* Starting address of ADC Pong buffer for channel 3 */
-
-  sl_adc_channel_config.rx_buf[4] =
-    adc_output; /* In order for us to read the data from adc_output in the sample application, ADC will save the data in the rx buffer. */
-  sl_adc_channel_config.chnl_ping_address[4] =
-    ADC_PING_BUFFER_5; /* Starting address of ADC Ping buffer for channel 3 */
-  sl_adc_channel_config.chnl_pong_address[4] =
-    (ADC_PING_BUFFER_5
-     + (sl_adc_channel_config.num_of_samples[4])); /* Starting address of ADC Pong buffer for channel 3 */
-
-  sl_adc_channel_config.rx_buf[5] =
-    adc_output; /* In order for us to read the data from adc_output in the sample application, ADC will save the data in the rx buffer. */
-  sl_adc_channel_config.chnl_ping_address[5] =
-    ADC_PING_BUFFER_6; /* Starting address of ADC Ping buffer for channel 3 */
-  sl_adc_channel_config.chnl_pong_address[5] =
-    (ADC_PING_BUFFER_6
-     + (sl_adc_channel_config.num_of_samples[5])); /* Starting address of ADC Pong buffer for channel 3 */
-
-  sl_adc_channel_config.rx_buf[6] =
-    adc_output; /* In order for us to read the data from adc_output in the sample application, ADC will save the data in the rx buffer. */
-  sl_adc_channel_config.chnl_ping_address[6] =
-    ADC_PING_BUFFER_7; /* Starting address of ADC Ping buffer for channel 3 */
-  sl_adc_channel_config.chnl_pong_address[6] =
-    (ADC_PING_BUFFER_7
-     + (sl_adc_channel_config.num_of_samples[6])); /* Starting address of ADC Pong buffer for channel 3 */
+  for (int i = 0; i < NUMBER_OF_CHANNEL; i ++) {
+    sl_adc_channel_config.rx_buf[i] =
+      adc_output; /* In order for us to read the data from adc_output in the sample application, ADC will save the data in the rx buffer. */
+    sl_adc_channel_config.chnl_ping_address[i] =
+      ping_pong_addr_list[i]; /* Starting address of ADC Ping buffer for channel 0 */
+    sl_adc_channel_config.chnl_pong_address[i] =
+      ping_pong_addr_list[i]
+      + (sl_adc_channel_config.num_of_samples[i]); /* Starting address of ADC Pong buffer for channel 0 */
+  }
 
   // Disable all ping-pong nonsense
-  for(int i = 0; i < NUMBER_OF_CHANNEL; i ++){
-      sl_si91x_adc_disable_ping_pong(i);
-  }
+  // for(int i = 0; i < NUMBER_OF_CHANNEL; i ++){
+  //     sl_si91x_adc_disable_ping_pong(i);
+  // }
 
   do {
     // Version information of ADC driver
     version = sl_si91x_adc_get_version();
     DEBUGOUT("ADC version is fetched successfully \n");
     DEBUGOUT("API version is %d.%d.%d\n", version.release, version.major, version.minor);
-
+    // if (sl_adc_config.operation_mode == 0) {
+    //   // Configure ADC clock
+    //   status = sl_si91x_adc_configure_clock(&adc_clock_config);
+    //   if (status != SL_STATUS_OK) {
+    //     DEBUGOUT("sl_si91x_adc_clock_configuration: Error Code : %lu \n", status);
+    //     break;
+    //   }
+    //   DEBUGOUT("Clock configuration is successful \n");
+    // }
     status = sl_si91x_adc_init(sl_adc_channel_config, sl_adc_config, vref_value);
     /* Due to calling trim_efuse API on ADC init in driver it will change the clock frequency,
         if we are not initialize the debug again it will print the garbage data in console output. */
@@ -297,7 +266,7 @@ void fm_sensors_init()
     status = sl_si91x_adc_set_channel_configuration(sl_adc_channel_config, sl_adc_config);
     if (status != SL_STATUS_OK) {
       DEBUGOUT("sl_si91x_adc_channel_set_configuration: Error Code : %lu \n", status);
-      break;
+      break; 
     }
     DEBUGOUT("ADC Channel Configuration Successfully \n");
     // Register user callback function
@@ -312,15 +281,63 @@ void fm_sensors_init()
       DEBUGOUT("sl_si91x_adc_start: Error Code : %lu \n", status);
       break;
     }
-    DEBUGOUT("ADC initialised\n");
+    DEBUGOUT("Sensors initialised\n");
   } while (false);
+}
+
+float samples_to_avg_float(int len)
+{
+  uint16_t avg_adc_output = 0;
+  for (int i = 0; i < len; i++) {
+    /* In two’s complement format, the MSb (11th bit) of the conversion result determines the polarity,
+      when the MSb = ‘0’, the result is positive, and when the MSb = ‘1’, the result is negative*/
+    if (adc_output[i] & SIGN_BIT) {
+      // Full-scale would be represented by a hexadecimal value, full-scale range of ADC result values in two’s complement.
+      adc_output[i] &= (int16_t)(ADC_DATA_CLEAR);
+    } else { // set the MSb bit.
+      adc_output[i] |= SIGN_BIT;
+    }
+    avg_adc_output += adc_output[i];
+  }
+  avg_adc_output /= len;
+  float average_f = (((float)avg_adc_output / (float)ADC_MAX_OP_VALUE) * vref_value);
+
+  return average_f;
+}
+
+void fm_read_all_sensors(void)
+{
+  sl_status_t status;
+  
+  for(int i = 0; i < NUMBER_OF_CHANNEL; i++){
+    if(true == ch_flags[i]){
+      status = sl_si91x_adc_read_data(sl_adc_channel_config, i);
+      if (status != SL_STATUS_OK) {
+        DEBUGOUT("sl_si91x_adc_read_data: Error Code : %lu \n", status);
+      }
+      ch_flags[i] = false;
+      result[i] = samples_to_avg_float(sl_adc_channel_config.num_of_samples[i]);
+    }
+  }
+  _sensors.thermistor_1 = result[0]; 
+  _sensors.thermistor_2 = result[1]; 
+  _sensors.thermistor_3 = result[2]; 
+  _sensors.thermistor_4 = result[3]; 
+  _sensors.pressure_1 = result[4]; 
+  _sensors.pressure_2 = result[5]; 
+  _sensors.power = result[6]; 
+}
+
+void fm_sensors_get_latest(sensors_t* res)
+{
+  // TODO: put memory locks here
+  *res = _sensors;
 }
 
 
 ESensorType_t fm_sensors_read(float *const data)
 {
   sl_status_t status;
-  uint32_t sample_length;
   static uint8_t chnl_num = 0;
   ESensorType_t ret = NO_SENSOR;
   float vout              = 0.0f;
@@ -334,18 +351,7 @@ ESensorType_t fm_sensors_read(float *const data)
     if (status != SL_STATUS_OK) {
       DEBUGOUT("sl_si91x_adc_read_data: Error Code : %lu \n", status);
     }
-    for (sample_length = 0; sample_length < sl_adc_channel_config.num_of_samples[chnl_num]; sample_length++) {
-      /* In two’s complement format, the MSb (11th bit) of the conversion result determines the polarity,
-       when the MSb = ‘0’, the result is positive, and when the MSb = ‘1’, the result is negative*/
-      if (adc_output[sample_length] & SIGN_BIT) {
-        // Full-scale would be represented by a hexadecimal value, full-scale range of ADC result values in two’s complement.
-        adc_output[sample_length] &= (int16_t)(ADC_DATA_CLEAR);
-      } else { // set the MSb bit.
-        adc_output[sample_length] |= SIGN_BIT;
-      }
-      avg_adc_output += adc_output[sample_length];
-    }
-    avg_adc_output /= sample_length;
+    avg_adc_output = samples_to_avg_float(sl_adc_channel_config.num_of_samples[chnl_num]);
     vout = (((float)avg_adc_output / (float)ADC_MAX_OP_VALUE) * vref_value);
     //For differential type it will give vout.
     if (sl_adc_channel_config.input_type[chnl_num]) {

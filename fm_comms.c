@@ -441,7 +441,9 @@ uint8_t fm_is_mqtt_connected()
   return is_mqtt_connected;
 }
 
-fm_comms_status fm_comms_publish_data(const char * data, size_t len, const char * topic, size_t topic_len)
+fm_comms_status fm_comms_publish_data(const char * data, size_t len, 
+                                      const char * topic, size_t topic_len, 
+                                      const char * device_id, size_t device_id_len)
 {
   if (SL_MQTT_CLIENT_CONNECTED != client.state){
       DEBUGOUT("Publish failed because client is disconnected:  %0xd\r\n", client.state);
@@ -449,14 +451,17 @@ fm_comms_status fm_comms_publish_data(const char * data, size_t len, const char 
       return FMCOMMS_FAILED;
   }
 
+  char topic_and_id[100] = {0};
+  snprintf(topic_and_id, topic_len + device_id_len + 2, "%s/%s", device_id, topic);
+
   sl_mqtt_client_message_t msg = {
       .content = (uint8_t*)data,
       .content_length = len,
       .is_duplicate_message = false,
       .is_retained = false,
       .qos_level = SL_MQTT_QOS_LEVEL_0,
-      .topic = (uint8_t*)topic,
-      .topic_length = topic_len,
+      .topic = (uint8_t*)topic_and_id,
+      .topic_length = strlen(topic_and_id),
   };
   uint32_t timeout_val_ms = 0;
   sl_status_t status = sl_mqtt_client_publish(&client, &msg, timeout_val_ms, NULL);
