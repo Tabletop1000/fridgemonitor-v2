@@ -1,9 +1,9 @@
 /*
- * fm_sensors.c
- *
- *  Created on: 5 Jan 2025
- *      Author: jdutra
- */
+* fm_sensors.c
+*
+*  Created on: 5 Jan 2025
+*      Author: jdutra
+*/
 
 #include "si91x_device.h"
 #include "sl_si91x_driver_gpio.h"
@@ -17,10 +17,10 @@
 #include "rsi_rom_clks.h"
 #include "thermistor_lookup.h"
 #include "interpolation_search.h"
-#include <math.h>
-#include <stdlib.h>
-#include <stdint.h>
 #include <stdio.h>
+#include <math.h>
+#include <stdint.h>
+#include <stdlib.h> // For abs()
 #include <limits.h>
 
 /****** DEFINES ******/
@@ -48,31 +48,19 @@ static boolean_t ch_flags[NUMBER_OF_CHANNEL] = {0};
 static fm_thermistor_handle thermistor_ctx;
 static fm_pressure_handle pressure_ctx;
 static fm_current_handle current_ctx;
-// static sl_adc_clock_config_t adc_clock_config;
 static sensors_t _sensors; // struct representing the latest sensor values, updated by fm_read_all_sensors and read by fm_sensors_get_latest
 static float result[NUMBER_OF_CHANNEL]; // array to hold the latest converted voltage values for each channel, updated by fm_read_all_sensors and read by fm_sensors_get_latest
 
 
-/*******  Local Function prototypes   ******/
-static void callback_event(uint8_t event_channel, uint8_t event);
-
-/*******************************************************************************
-* Callback event function
-* It is responsible for the event which are triggered by ADC interface
-* @param  event       : INTERNAL_DMA => Single channel data acquisition done.
-*                       ADC_STATIC_MODE_CALLBACK => Static mode adc data
-*                       acquisition done.
-******************************************************************************/
+// The Silabs ADC initialization path requires an event callback to be
+// registered. When the application uses synchronous read operations and
+// does not rely on ADC event callbacks, this stub preserves the required
+// callback registration without performing any action.
 static void callback_event(uint8_t event_channel, uint8_t event)
 {
-  if (event == SL_INTERNAL_DMA) {
-    ch_flags[event_channel] = true;
-  }
+  (void)event_channel;
+  (void)event;
 }
-
-
-#include <stdio.h>
-#include <stdlib.h> // For abs()
 
 // Function to find the nearest value in the second column and return the corresponding first column value
 int find_nearest_value(const float arr[], int size, float target) {
@@ -96,10 +84,6 @@ float linear_interpolate(float R, float x0, float x1, float y0, float y1)
   }
   return result;
 }
-
-/*******************************************************************************
-* Function will run continuously and will wait for trigger
-******************************************************************************/
 
 float voltage_to_pressure(float v)
 {
@@ -235,11 +219,6 @@ void fm_sensors_init()
       + (sl_adc_channel_config.num_of_samples[i]); /* Starting address of ADC Pong buffer for channel 0 */
   }
 
-  // Disable all ping-pong nonsense
-  // for(int i = 0; i < NUMBER_OF_CHANNEL; i ++){
-  //     sl_si91x_adc_disable_ping_pong(i);
-  // }
-
   do {
     // Version information of ADC driver
     version = sl_si91x_adc_get_version();
@@ -310,14 +289,12 @@ void fm_read_all_sensors(void)
   sl_status_t status;
   
   for(int i = 0; i < NUMBER_OF_CHANNEL; i++){
-    if(true == ch_flags[i]){
-      status = sl_si91x_adc_read_data(sl_adc_channel_config, i);
-      if (status != SL_STATUS_OK) {
-        DEBUGOUT("sl_si91x_adc_read_data: Error Code : %lu \n", status);
-      }
-      ch_flags[i] = false;
-      result[i] = samples_to_avg_float(sl_adc_channel_config.num_of_samples[i]);
+    status = sl_si91x_adc_read_data(sl_adc_channel_config, i);
+    if (status != SL_STATUS_OK) {
+      DEBUGOUT("sl_si91x_adc_read_data: Error Code : %lu \n", status);
     }
+    ch_flags[i] = false;
+    result[i] = samples_to_avg_float(sl_adc_channel_config.num_of_samples[i]);
   }
   _sensors.thermistor_1 = result[0]; 
   _sensors.thermistor_2 = result[1]; 
@@ -333,41 +310,6 @@ void fm_sensors_get_latest(sensors_t* res)
   // TODO: put memory locks here
   *res = _sensors;
 }
-
-
-ESensorType_t fm_sensors_read(float *const data)
-{
-  sl_status_t status;
-  static uint8_t chnl_num = 0;
-  ESensorType_t ret = NO_SENSOR;
-  float vout              = 0.0f;
-  int32_t avg_adc_output  = 0;
-
-  // here we get the 12-bit value of ADC output in equivalent voltage.
-  if (ch_flags[chnl_num] == true) {
-    ret = (ESensorType_t)chnl_num;
-    ch_flags[chnl_num] = false;
-    status             = sl_si91x_adc_read_data(sl_adc_channel_config, chnl_num);
-    if (status != SL_STATUS_OK) {
-      DEBUGOUT("sl_si91x_adc_read_data: Error Code : %lu \n", status);
-    }
-    avg_adc_output = samples_to_avg_float(sl_adc_channel_config.num_of_samples[chnl_num]);
-    vout = (((float)avg_adc_output / (float)ADC_MAX_OP_VALUE) * vref_value);
-    //For differential type it will give vout.
-    if (sl_adc_channel_config.input_type[chnl_num]) {
-      vout = vout - (vref_value / 2);
-    }
-    *data = vout;
-
-    //DEBUGOUT("ADC channel_%d[%ld] :%0.2fV \n", chnl_num, sample_length, (float)vout);
-    if (++chnl_num >= NUMBER_OF_CHANNEL) {
-      chnl_num = 0;
-      //DEBUGOUT("\n\n");
-    }
-  }
-  return ret;
-}
-
 
 void get_sensor_name_string(ESensorType_t sensor, char * buffer)
 {
