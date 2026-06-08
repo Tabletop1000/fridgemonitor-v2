@@ -59,15 +59,15 @@
 // [PWM_CH3]$
 
 // $[ADC_CH1]
-// ADC_CH1 P on ULP_GPIO_1/GPIO_65
+// ADC_CH1 P on ULP_GPIO_2/GPIO_66
 #ifndef ADC_CH1_P_PORT                          
 #define ADC_CH1_P_PORT                           ULP
 #endif
 #ifndef ADC_CH1_P_PIN                           
-#define ADC_CH1_P_PIN                            1
+#define ADC_CH1_P_PIN                            2
 #endif
 #ifndef ADC_CH1_P_LOC                           
-#define ADC_CH1_P_LOC                            10
+#define ADC_CH1_P_LOC                            1
 #endif
 
 // [ADC_CH1]$
@@ -101,15 +101,15 @@
 // [ADC_CH3]$
 
 // $[ADC_CH4]
-// ADC_CH4 P on GPIO_25
+// ADC_CH4 P on GPIO_29
 #ifndef ADC_CH4_P_PORT                          
 #define ADC_CH4_P_PORT                           HP
 #endif
 #ifndef ADC_CH4_P_PIN                           
-#define ADC_CH4_P_PIN                            25
+#define ADC_CH4_P_PIN                            29
 #endif
 #ifndef ADC_CH4_P_LOC                           
-#define ADC_CH4_P_LOC                            63
+#define ADC_CH4_P_LOC                            65
 #endif
 
 // [ADC_CH4]$
@@ -129,29 +129,29 @@
 // [ADC_CH5]$
 
 // $[ADC_CH6]
-// ADC_CH6 P on GPIO_29
+// ADC_CH6 P on ULP_GPIO_1/GPIO_65
 #ifndef ADC_CH6_P_PORT                          
-#define ADC_CH6_P_PORT                           HP
+#define ADC_CH6_P_PORT                           ULP
 #endif
 #ifndef ADC_CH6_P_PIN                           
-#define ADC_CH6_P_PIN                            29
+#define ADC_CH6_P_PIN                            1
 #endif
 #ifndef ADC_CH6_P_LOC                           
-#define ADC_CH6_P_LOC                            103
+#define ADC_CH6_P_LOC                            105
 #endif
 
 // [ADC_CH6]$
 
 // $[ADC_CH7]
-// ADC_CH7 P on GPIO_30
+// ADC_CH7 P on GPIO_25
 #ifndef ADC_CH7_P_PORT                          
 #define ADC_CH7_P_PORT                           HP
 #endif
 #ifndef ADC_CH7_P_PIN                           
-#define ADC_CH7_P_PIN                            30
+#define ADC_CH7_P_PIN                            25
 #endif
 #ifndef ADC_CH7_P_LOC                           
-#define ADC_CH7_P_LOC                            132
+#define ADC_CH7_P_LOC                            120
 #endif
 
 // [ADC_CH7]$
@@ -226,11 +226,11 @@
 // [MCU_CLK_OUT]$
 
 // $[CUSTOM_PIN_NAME]
-#ifndef Thermistor_1_PORT                       
-#define Thermistor_1_PORT                        HP
+#ifndef Pressure_2_PORT                         
+#define Pressure_2_PORT                          HP
 #endif
-#ifndef Thermistor_1_PIN                        
-#define Thermistor_1_PIN                         25
+#ifndef Pressure_2_PIN                          
+#define Pressure_2_PIN                           25
 #endif
 
 #ifndef Thermistor_2_PORT                       
@@ -261,18 +261,18 @@
 #define Pressure_1_PIN                           29
 #endif
 
-#ifndef Pressure_2_PORT                         
-#define Pressure_2_PORT                          HP
-#endif
-#ifndef Pressure_2_PIN                          
-#define Pressure_2_PIN                           30
-#endif
-
 #ifndef Power_PORT                              
 #define Power_PORT                               ULP
 #endif
 #ifndef Power_PIN                               
 #define Power_PIN                                1
+#endif
+
+#ifndef Thermistor_1_PORT                       
+#define Thermistor_1_PORT                        ULP
+#endif
+#ifndef Thermistor_1_PIN                        
+#define Thermistor_1_PIN                         2
 #endif
 
 // [CUSTOM_PIN_NAME]$

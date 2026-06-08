@@ -48,11 +48,11 @@ extern "C" {
 
 // <o SL_ADC_CHANNEL_7_SAMPLING_RATE> Sampling Rate <1-2500000>
 // <i> Default: 100000
-#define SL_ADC_CHANNEL_7_SAMPLING_RATE 2
+#define SL_ADC_CHANNEL_7_SAMPLING_RATE 1000
 
 // <o SL_ADC_CHANNEL_7_SAMPLE_LENGTH> Sample Length <1-1023>
 // <i> Default: 1023
-#define SL_ADC_CHANNEL_7_SAMPLE_LENGTH 20
+#define SL_ADC_CHANNEL_7_SAMPLE_LENGTH 1
 
 // </h>
 // <<< end of configuration section >>>
@@ -67,15 +67,15 @@ extern "C" {
 #define SL_ADC_CH7_PERIPHERAL_NO                 7
 #endif
 
-// ADC_CH7 P on GPIO_30
+// ADC_CH7 P on GPIO_25
 #ifndef SL_ADC_CH7_P_PORT                       
 #define SL_ADC_CH7_P_PORT                        HP
 #endif
 #ifndef SL_ADC_CH7_P_PIN                        
-#define SL_ADC_CH7_P_PIN                         30
+#define SL_ADC_CH7_P_PIN                         25
 #endif
 #ifndef SL_ADC_CH7_P_LOC                        
-#define SL_ADC_CH7_P_LOC                         132
+#define SL_ADC_CH7_P_LOC                         120
 #endif
 
 // [ADC_CH7_SL_ADC_CH7]$

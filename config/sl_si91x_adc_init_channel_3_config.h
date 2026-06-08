@@ -48,11 +48,11 @@ extern "C" {
 
 // <o SL_ADC_CHANNEL_3_SAMPLING_RATE> Sampling Rate <1-2500000>
 // <i> Default: 100000
-#define SL_ADC_CHANNEL_3_SAMPLING_RATE 2
+#define SL_ADC_CHANNEL_3_SAMPLING_RATE 1000
 
 // <o SL_ADC_CHANNEL_3_SAMPLE_LENGTH> Sample Length <1-1023>
 // <i> Default: 1023
-#define SL_ADC_CHANNEL_3_SAMPLE_LENGTH 20
+#define SL_ADC_CHANNEL_3_SAMPLE_LENGTH 1
 
 // </h>
 // <<< end of configuration section >>>
