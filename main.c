@@ -16,6 +16,7 @@
  ******************************************************************************/
 #include "sl_component_catalog.h"
 #include "sl_main_init.h"
+#include "sl_main_kernel.h"
 #include "app.h"
 
 #if defined(SL_CATALOG_POWER_MANAGER_PRESENT)
@@ -27,6 +28,7 @@ int main(void)
   // Initialize Silicon Labs device, system, service(s) and protocol stack(s).
   // Note that if the kernel is present, processing task(s) will be created by
   // this call.
+  // sl_main_init();
   sl_main_second_stage_init();
 
   // Initialize the application. For example, create periodic timer(s) or

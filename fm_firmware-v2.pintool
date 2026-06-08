@@ -3,7 +3,7 @@
   <mode name="DefaultMode">
     <property object="ADC_CH1" propertyId="ABModule.selectedRequirement" value="adc_ch1%T%SL_ADC_CH1%T%sl_si91x_adc_init_channel_1_config.h"/>
     <property object="ADC_CH1" propertyId="ABPeripheral.included" value="true"/>
-    <property object="ADC_CH1" propertyId="peripheral.name" value="PowerMeas"/>
+    <property object="ADC_CH1" propertyId="peripheral.name" value="Thermistor1"/>
     <property object="ADC_CH2" propertyId="ABModule.selectedRequirement" value="adc_ch2%T%SL_ADC_CH2%T%sl_si91x_adc_init_channel_2_config.h"/>
     <property object="ADC_CH2" propertyId="ABPeripheral.included" value="true"/>
     <property object="ADC_CH2" propertyId="peripheral.name" value="Thermistor_3"/>
@@ -25,12 +25,12 @@
     <property object="DefaultMode" propertyId="mode.diagramLocation" value="100, 100"/>
     <property object="GPIO_15" propertyId="ABModule.selectedRequirement" value="gpio%T%SL_SI91X_LED_BLUE%T%sl_si91x_rgb_led_init_config.h"/>
     <property object="GPIO_15" propertyId="pin.reserve" value="Reserved"/>
-    <property object="GPIO_25" propertyId="pin.name" value="Thermistor_1"/>
+    <property object="GPIO_25" propertyId="pin.name" value="Pressure_2"/>
     <property object="GPIO_26" propertyId="pin.name" value="Thermistor_2"/>
     <property object="GPIO_27" propertyId="pin.name" value="Thermistor_3"/>
     <property object="GPIO_28" propertyId="pin.name" value="Thermistor_4"/>
     <property object="GPIO_29" propertyId="pin.name" value="Pressure_1"/>
-    <property object="GPIO_30" propertyId="pin.name" value="Pressure_2"/>
+    <property object="GPIO_30" propertyId="pin.name" value=""/>
     <property object="GPIO_50" propertyId="ABModule.selectedRequirement" value="gpio%T%SL_SI91X_LED_RED%T%sl_si91x_rgb_led_init_config.h"/>
     <property object="GPIO_50" propertyId="pin.reserve" value="Reserved"/>
     <property object="GPIO_51" propertyId="ABModule.selectedRequirement" value="gpio%T%SL_SI91X_LED_GREEN%T%sl_si91x_rgb_led_init_config.h"/>
@@ -42,14 +42,15 @@
     <property object="PORTIO" propertyId="portio.adc.enable.adcp5" value="Enabled"/>
     <property object="PORTIO" propertyId="portio.adc.enable.adcp6" value="Enabled"/>
     <property object="PORTIO" propertyId="portio.adc.enable.adcp7" value="Enabled"/>
-    <property object="PORTIO" propertyId="portio.adc.location.adcp1" value="10"/>
+    <property object="PORTIO" propertyId="portio.adc.location.adcp1" value="1"/>
     <property object="PORTIO" propertyId="portio.adc.location.adcp2" value="26"/>
     <property object="PORTIO" propertyId="portio.adc.location.adcp3" value="55"/>
-    <property object="PORTIO" propertyId="portio.adc.location.adcp4" value="63"/>
+    <property object="PORTIO" propertyId="portio.adc.location.adcp4" value="65"/>
     <property object="PORTIO" propertyId="portio.adc.location.adcp5" value="92"/>
-    <property object="PORTIO" propertyId="portio.adc.location.adcp6" value="103"/>
-    <property object="PORTIO" propertyId="portio.adc.location.adcp7" value="132"/>
+    <property object="PORTIO" propertyId="portio.adc.location.adcp6" value="105"/>
+    <property object="PORTIO" propertyId="portio.adc.location.adcp7" value="120"/>
     <property object="ULP_GPIO_1" propertyId="pin.name" value="Power"/>
+    <property object="ULP_GPIO_2" propertyId="pin.name" value="Thermistor_1"/>
     <property object="ULP_GPIO_5" propertyId="pin.name" value=""/>
     <property object="ULP_GPIO_8" propertyId="pin.name" value=""/>
   </mode>

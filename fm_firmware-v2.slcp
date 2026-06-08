@@ -116,6 +116,19 @@ other_file:
 - path: resources/readme/setup_soc_ncp.png
 define:
 - name: SL_SI91X_PRINT_DBG_LOG
+template_contribution:
+- name: memory_ram_start
+  priority: 0
+  value: 0
+- name: memory_ram_size
+  priority: 0
+  value: 0
+- name: memory_flash_start
+  priority: 0
+  value: 0
+- name: memory_flash_size
+  priority: 0
+  value: 0
 configuration:
 - name: SL_BOARD_ENABLE_VCOM
   value: '1'

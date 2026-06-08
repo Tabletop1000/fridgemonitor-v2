@@ -10,7 +10,7 @@
     <properties key="projectCommon.kitId" value=""/>
     <properties key="projectCommon.partId" value="mcu.arm.wfm.siwg917m111mgtba"/>
     <properties key="projectCommon.toolchainId" value="com.silabs.ss.framework.project.core.noToolChain:0.0.0"/>
-    <properties key="universalConfig.projectTypeIds" value="visual-studio-code cmake"/>
+    <properties key="universalConfig.projectTypeIds" value="visual-studio-code"/>
     <properties key="projectCommon.importModeId" value="LINK_LIBRARIES"/>
     <properties key="universalConfig.compSelProjInstanceId" value="1779972478491"/>
   </descriptors>

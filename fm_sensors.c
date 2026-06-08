@@ -27,30 +27,31 @@
 #define PS4_SOC_FREQ          180000000  /*<! PLL out clock 180MHz            */
 #define SOC_PLL_REF_FREQUENCY 40000000   /*<! PLL input REFERENCE clock 40MHZ */
 #define DVISION_FACTOR        0          // Division factor
-#define CHANNEL_SAMPLE_LENGTH 20     // Number of ADC sample collect for operation
-#define ADC_MAX_OP_VALUE      4095       // Maximum output value get from adc data register
-#define ADC_DATA_CLEAR        0xF7FF     // Clear the data if 12th bit is enabled
+#define CHANNEL_SAMPLE_LENGTH 1     // Number of ADC sample collect for operation
+#define ADC_MAX_OP_VALUE      4095       // Maximum unsigned 12-bit ADC value
+#define ADC_MAX_OP_VALUE_SIGNED 2047     // Maximum signed 12-bit ADC magnitude
+#define ADC_DATA_CLEAR        0xF7FF     // Clear the data if 12th bit is enabled (1111 0111 1111 1111)
 #define VREF_VALUE            3.3        // reference voltage
 
-#define ADC_PING_BUFFER_1     0x0000A000 // Start address of Ping for channel_0
-#define ADC_PING_BUFFER_2     0x0000B000 // Start address of Ping for channel_1
-#define ADC_PING_BUFFER_3     0x0000C000 // Start address of Ping for channel_2
-#define ADC_PING_BUFFER_4     0x0000D000 // Start address of Ping for channel_3
-#define ADC_PING_BUFFER_5     0x0000E000 // Start address of Ping for channel_4
-#define ADC_PING_BUFFER_6     0x0000F000 // Start address of Ping for channel_5
-#define ADC_PING_BUFFER_7     0x00010000 // Start address of Ping for channel_6
+#define ADC_PING_BUFFER_1     0x000A0000 // Start address of Ping for channel_0
+#define ADC_PING_BUFFER_2     0x000B0000 // Start address of Ping for channel_1
+#define ADC_PING_BUFFER_3     0x000C0000 // Start address of Ping for channel_2
+#define ADC_PING_BUFFER_4     0x000D0000 // Start address of Ping for channel_3
+#define ADC_PING_BUFFER_5     0x000E0000 // Start address of Ping for channel_4
+#define ADC_PING_BUFFER_6     0x000F0000 // Start address of Ping for channel_5
+#define ADC_PING_BUFFER_7     0x00100000 // Start address of Ping for channel_6
 
 /******* LOCAL VARIABLES   *********/
 static float vref_value = (float)VREF_VALUE;
-static int16_t adc_output[CHANNEL_SAMPLE_LENGTH];
-static boolean_t ch_flags[NUMBER_OF_CHANNEL] = {0};
+static int16_t adc_output[NUMBER_OF_CHANNEL][CHANNEL_SAMPLE_LENGTH];
+static boolean_t adc_sample_ready = false;
 
 static fm_thermistor_handle thermistor_ctx;
 static fm_pressure_handle pressure_ctx;
 static fm_current_handle current_ctx;
 static sensors_t _sensors; // struct representing the latest sensor values, updated by fm_read_all_sensors and read by fm_sensors_get_latest
-static float result[NUMBER_OF_CHANNEL]; // array to hold the latest converted voltage values for each channel, updated by fm_read_all_sensors and read by fm_sensors_get_latest
 
+static void callback_event(uint8_t event_channel, uint8_t event);
 
 // The Silabs ADC initialization path requires an event callback to be
 // registered. When the application uses synchronous read operations and
@@ -182,41 +183,14 @@ void fm_sensors_init()
   sl_adc_version_t version;
   sl_status_t status;
 
-  // default clock configuration by application common for whole system
-  // default_clock_configuration();
-  sl_adc_clock_config_t adc_clock_config;
-  adc_clock_config.soc_pll_clock           = PS4_SOC_FREQ;
-  adc_clock_config.soc_pll_reference_clock = SOC_PLL_REF_FREQUENCY;
-  adc_clock_config.division_factor         = DVISION_FACTOR;
-#pragma GCC diagnostic push
-#pragma GCC diagnostic ignored "-Wdeprecated-declarations"
-  status = sl_si91x_adc_configure_clock(&adc_clock_config);
-#pragma GCC diagnostic pop
-  if (status != SL_STATUS_OK) {
-    DEBUGOUT("sl_si91x_adc_clock_configuration: Error Code : %lu \n", status);
-    return;
-  }
   DEBUGOUT("Clock configuration is successful \n");
-
-  uint32_t ping_pong_addr_list[] =
-  {
-    ADC_PING_BUFFER_1,
-    ADC_PING_BUFFER_2,
-    ADC_PING_BUFFER_3,
-    ADC_PING_BUFFER_4,
-    ADC_PING_BUFFER_5,
-    ADC_PING_BUFFER_6,
-    ADC_PING_BUFFER_7,
-  };
 
   for (int i = 0; i < NUMBER_OF_CHANNEL; i ++) {
     sl_adc_channel_config.rx_buf[i] =
-      adc_output; /* In order for us to read the data from adc_output in the sample application, ADC will save the data in the rx buffer. */
-    sl_adc_channel_config.chnl_ping_address[i] =
-      ping_pong_addr_list[i]; /* Starting address of ADC Ping buffer for channel 0 */
-    sl_adc_channel_config.chnl_pong_address[i] =
-      ping_pong_addr_list[i]
-      + (sl_adc_channel_config.num_of_samples[i]); /* Starting address of ADC Pong buffer for channel 0 */
+      adc_output[i]; // Use a distinct receive buffer for each ADC channel.
+    // sl_adc_channel_config.chnl_ping_address[i] = ping_pong_addr_list[i]; // ADC ping address 
+    // sl_adc_channel_config.chnl_pong_address[i] = ping_pong_addr_list[i]
+    //   + (sl_adc_channel_config.num_of_samples[i]); // ADC pong address
   }
 
   do {
@@ -224,15 +198,7 @@ void fm_sensors_init()
     version = sl_si91x_adc_get_version();
     DEBUGOUT("ADC version is fetched successfully \n");
     DEBUGOUT("API version is %d.%d.%d\n", version.release, version.major, version.minor);
-    // if (sl_adc_config.operation_mode == 0) {
-    //   // Configure ADC clock
-    //   status = sl_si91x_adc_configure_clock(&adc_clock_config);
-    //   if (status != SL_STATUS_OK) {
-    //     DEBUGOUT("sl_si91x_adc_clock_configuration: Error Code : %lu \n", status);
-    //     break;
-    //   }
-    //   DEBUGOUT("Clock configuration is successful \n");
-    // }
+
     status = sl_si91x_adc_init(sl_adc_channel_config, sl_adc_config, vref_value);
     /* Due to calling trim_efuse API on ADC init in driver it will change the clock frequency,
         if we are not initialize the debug again it will print the garbage data in console output. */
@@ -242,6 +208,7 @@ void fm_sensors_init()
       break;
     }
     DEBUGOUT("ADC Initialization Success\n");
+
     status = sl_si91x_adc_set_channel_configuration(sl_adc_channel_config, sl_adc_config);
     if (status != SL_STATUS_OK) {
       DEBUGOUT("sl_si91x_adc_channel_set_configuration: Error Code : %lu \n", status);
@@ -260,49 +227,48 @@ void fm_sensors_init()
       DEBUGOUT("sl_si91x_adc_start: Error Code : %lu \n", status);
       break;
     }
+
+    for(int i = 0; i < NUMBER_OF_CHANNEL; i++){
+      sl_si91x_adc_disable_ping_pong(i);
+    }
     DEBUGOUT("Sensors initialised\n");
   } while (false);
-}
-
-float samples_to_avg_float(int len)
-{
-  uint16_t avg_adc_output = 0;
-  for (int i = 0; i < len; i++) {
-    /* In two’s complement format, the MSb (11th bit) of the conversion result determines the polarity,
-      when the MSb = ‘0’, the result is positive, and when the MSb = ‘1’, the result is negative*/
-    if (adc_output[i] & SIGN_BIT) {
-      // Full-scale would be represented by a hexadecimal value, full-scale range of ADC result values in two’s complement.
-      adc_output[i] &= (int16_t)(ADC_DATA_CLEAR);
-    } else { // set the MSb bit.
-      adc_output[i] |= SIGN_BIT;
-    }
-    avg_adc_output += adc_output[i];
-  }
-  avg_adc_output /= len;
-  float average_f = (((float)avg_adc_output / (float)ADC_MAX_OP_VALUE) * vref_value);
-
-  return average_f;
 }
 
 void fm_read_all_sensors(void)
 {
   sl_status_t status;
-  
-  for(int i = 0; i < NUMBER_OF_CHANNEL; i++){
-    status = sl_si91x_adc_read_data(sl_adc_channel_config, i);
-    if (status != SL_STATUS_OK) {
-      DEBUGOUT("sl_si91x_adc_read_data: Error Code : %lu \n", status);
-    }
-    ch_flags[i] = false;
-    result[i] = samples_to_avg_float(sl_adc_channel_config.num_of_samples[i]);
+  float vout[NUMBER_OF_CHANNEL]              = {0.0f};
+  uint16_t adc_output_static = 0;
+
+  // here we get the 12-bit value of ADC output in equivalent voltage.
+  sl_adc_channel_config.channel = SL_ADC_CHANNEL_1;
+  for(int i = 0; i  < NUMBER_OF_CHANNEL; i++){
+    // if (adc_sample_ready == true) {
+      adc_sample_ready = false;
+      int channel_read = sl_adc_channel_config.channel;
+      status = sl_si91x_adc_read_data_static_v2(&sl_adc_channel_config, sl_adc_config, &adc_output_static);
+      if (status != SL_STATUS_OK) {
+        DEBUGOUT("sl_si91x_adc_read_data: Error Code : %lu \n", status);
+      }
+      adc_output[channel_read][0] = (int16_t)adc_output_static;
+      if (adc_output[channel_read][0] & SIGN_BIT) {
+        adc_output[channel_read][0] = (int16_t)(adc_output[channel_read][0] & (ADC_DATA_CLEAR));
+      } else { // set the MSb bit.
+        adc_output[channel_read][0] = adc_output[channel_read][0] | SIGN_BIT;
+      }
+      vout[channel_read] = (((float)adc_output[channel_read][0] / (float)ADC_MAX_OP_VALUE) * vref_value);
+
+      // DEBUGOUT("ADC channel_%d :%0.2fV \n", channel_read, (float)vout[channel_read]);
+      osDelay(3);
   }
-  _sensors.thermistor_1 = result[0]; 
-  _sensors.thermistor_2 = result[1]; 
-  _sensors.thermistor_3 = result[2]; 
-  _sensors.thermistor_4 = result[3]; 
-  _sensors.pressure_1 = result[4]; 
-  _sensors.pressure_2 = result[5]; 
-  _sensors.power = result[6]; 
+  _sensors.thermistor_1 = vout[0]; 
+  _sensors.thermistor_3 = vout[1]; 
+  _sensors.thermistor_4 = vout[2]; 
+  _sensors.pressure_1 = vout[3]; 
+  _sensors.thermistor_2 = vout[4]; 
+  _sensors.power = vout[5]; 
+  _sensors.pressure_2 = vout[6]; 
 }
 
 void fm_sensors_get_latest(sensors_t* res)

@@ -64,7 +64,7 @@ const osThreadAttr_t led_thread_attributes =
 osThreadId_t button_thread_id;
 const osThreadAttr_t button_thread_attributes =
   { .name = "button_thread", .attr_bits = 0, .cb_mem = 0, .cb_size = 0, .stack_mem = 0,
-      .stack_size = 1024*4, .priority = osPriorityNormal, .tz_module = 0, .reserved =
+      .stack_size = 1024, .priority = osPriorityNormal, .tz_module = 0, .reserved =
           0, };
 
 osThreadId_t main_thread_id;
@@ -237,6 +237,47 @@ led_thread(void *argument)
   }
 }
 
+
+void publish_all_sensor_data(sensors_t* data)
+{
+  char buf_data[1023];
+  // For troubleshooing purposes I have removed all the volatgae conversions.
+  // Add back in by replacing eachine line like:
+  //printf(buf_data, "%0.2f", (value));
+  // with:
+  //printf(buf_data, "%0.2f", voltage_to_temperature(value));
+  
+  
+  sprintf(buf_data, "%0.2f", data->thermistor_1);
+  fm_comms_publish_data (buf_data,strlen (buf_data),"temperature1",strlen ("temperature1"), device_id, strlen(device_id));
+  DEBUGOUT("%s: %s\r\n","temperature1:", buf_data);
+  
+  sprintf(buf_data, "%0.2f", data->thermistor_2);
+  fm_comms_publish_data (buf_data,strlen (buf_data),"temperature2",strlen ("temperature2"), device_id, strlen(device_id));
+  DEBUGOUT("%s: %s\r\n","temperature2:", buf_data);
+  
+  sprintf(buf_data, "%0.2f", data->thermistor_3);
+  fm_comms_publish_data (buf_data,strlen (buf_data),"temperature3",strlen ("temperature3"), device_id, strlen(device_id));
+  DEBUGOUT("%s: %s\r\n","temperature3:", buf_data);
+  
+  sprintf(buf_data, "%0.2f", data->thermistor_4);
+  fm_comms_publish_data (buf_data,strlen (buf_data),"temperature4",strlen ("temperature4"), device_id, strlen(device_id));
+  DEBUGOUT("%s: %s\r\n","temperature4:", buf_data);
+  
+  sprintf(buf_data, "%0.2f", data->pressure_1);
+  fm_comms_publish_data (buf_data,strlen (buf_data),"pressure1",strlen ("pressure1"), device_id, strlen(device_id));
+  DEBUGOUT("%s: %s\r\n","pressure1:", buf_data);
+  
+  sprintf(buf_data, "%0.2f", data->pressure_2);
+  fm_comms_publish_data (buf_data,strlen (buf_data),"pressure2",strlen ("pressure2"), device_id, strlen(device_id));
+  DEBUGOUT("%s: %s\r\n","pressure2:", buf_data);
+  
+  sprintf(buf_data, "%0.2f", data->power);
+  fm_comms_publish_data (buf_data,strlen (buf_data),"power",strlen ("power"), device_id, strlen(device_id));
+  DEBUGOUT("%s: %s\r\n","power:", buf_data);
+
+}
+
 int publish_sensor_data(ESensorType_t sensor_type, float value)
 {
   char buf_data[1023];
@@ -285,8 +326,11 @@ int publish_sensor_data(ESensorType_t sensor_type, float value)
   fm_comms_status status = fm_comms_publish_data (
       buf_data,
       strlen (buf_data),
-      buf,
-      strlen (buf));
+      buf_topic,
+      strlen (buf_topic),
+      device_id,
+      strlen(device_id)
+  );
 
   if(status != FMCOMMS_SUCCESS){
       return EXIT_FAILURE;
@@ -403,17 +447,17 @@ fridge_monitor (void *argument)
                 fm_sensors_close();
                 state = MQTT;
             } else {
-              float vout;
-              ESensorType_t sensor = fm_sensors_read(&vout);
-              if(NO_SENSOR != sensor){
-                if(EXIT_SUCCESS != publish_sensor_data(sensor,vout)){
-                    fm_comms_deint();
-                    fm_sensors_close();
-                    state = INITIALISING;
-                } else {
-                  state = OPERATING;
-                }
-              }
+              //ESensorType_t sensor = fm_sensors_read(&vout);
+              sensors_t data;
+              fm_read_all_sensors();
+              fm_sensors_get_latest(&data);
+              publish_all_sensor_data(&data);
+                    // TODO: If publish or read fails, deinint
+                    // fm_comms_deint();
+                    // fm_sensors_close();
+                    // state = INITIALISING;
+                // } else {
+              state = OPERATING;
             }
           break;
         case PROVISIONING:
@@ -468,6 +512,7 @@ fridge_monitor (void *argument)
 
             state = FM_ERROR;
             break;
+          }
         case FM_ERROR:
           led_cmd = LED_RED;
           printf("STATE MACHINE ERROR. LAST STATE: ");
@@ -477,12 +522,11 @@ fridge_monitor (void *argument)
           break;
         default:
           break;
-      }
+      }          
       osMessageQueuePut(queue_led_id, &led_cmd, 0, 0);
-      osDelay(50);
+      osDelay(pdMS_TO_TICKS(250));
       if(state != last_state){ // dont spam the console
         printstate(&last_state);printf("-->");printstate(&state);printf("\n");
-      }
     }
   }
 }
