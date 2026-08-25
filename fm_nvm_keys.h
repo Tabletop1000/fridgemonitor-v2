@@ -13,5 +13,6 @@
 #define NVM3_KEY_MQTT_ADDRESS     0x300
 #define NVM3_KEY_MQTT_USERNAME    0x400
 #define NVM3_KEY_MQTT_PASSWORD    0x500
+#define NVM3_KEY_DEVICE_ID        0x600
 
 #endif /* FM_NVM_KEYS_H_ */
