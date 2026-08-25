@@ -1,0 +1,15 @@
+#ifndef FM_ERROR_CODES_H
+#define FM_ERROR_CODES_H
+
+typedef enum {
+  FM_SUCCESS,
+  FM_FAILED,
+  FM_NVM_ERROR,
+  FM_NVM_EMPTY,
+  FM_WIFI_NOT_FOUND,
+  FM_NOT_INITIALISED,
+  FM_OTA_UPDATE,
+  FM_MQTT_ERROR,
+}fm_error_t;
+
+#endif 
