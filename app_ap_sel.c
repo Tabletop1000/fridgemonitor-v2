@@ -52,6 +52,7 @@
 #include "nvm3.h"
 #include "nvm3_hal_flash.h"
 #include "fm_nvm_keys.h"
+#include "fm_nvm.h"
 
 
 /******************************************************
@@ -98,6 +99,9 @@
 #define MQTT_SERVER   "server"
 #define MQTT_USERNAME "username"
 #define MQTT_PASSWORD "password"
+#define DEVICE_ID     "A000001"
+
+extern program_data_t pdata;
 
 // Enumeration for states in the application
 typedef enum {
@@ -142,15 +146,8 @@ static app_state_t app_state                                   = PROVISIONING_IN
 static sl_wifi_client_configuration_t provisioned_access_point = { 0 };
 static uint8_t connection_status                                = 0U;
 
-static char wifi_client_profile_ssid[32]; // Assuming SSID can be up to 32 characters long
-static char wifi_client_credential[64];   // Assuming Password can be up to 64 characters long
-static char wifi_client_security_type[32];
-static char mqtt_client_username[32];
-static char mqtt_client_password[32];
-static char mqtt_server_address[64];
 
-
-static sl_net_wifi_client_profile_t wifi_client_profile_4 = {
+static sl_net_wifi_client_profile_t wifi_client_profile_local = {
     .config = {
         .channel.channel = SL_WIFI_AUTO_CHANNEL,
         .channel.band = SL_WIFI_AUTO_BAND,
@@ -309,15 +306,15 @@ void fm_ap_sel_start(void)
         sl_wifi_credential_t cred  = { 0 };
         sl_wifi_credential_id_t id = 2; //SL_NET_DEFAULT_WIFI_CLIENT_CREDENTIAL_ID;
         cred.type                  = SL_WIFI_PSK_CREDENTIAL;
-        memcpy(cred.psk.value, wifi_client_credential, strlen((char *)wifi_client_credential));
+        memcpy(cred.psk.value, pdata.wifi_client_credential, strlen((char *)pdata.wifi_client_credential));
 
         status =
-          sl_net_set_credential(id, SL_NET_WIFI_PSK, wifi_client_credential, strlen((char *)wifi_client_credential));
+          sl_net_set_credential(id, SL_NET_WIFI_PSK, pdata.wifi_client_credential, strlen((char *)pdata.wifi_client_credential));
 
         memset(&provisioned_access_point, 0, sizeof(provisioned_access_point));
-        provisioned_access_point.ssid.length = strlen((char *)wifi_client_profile_ssid);
-        memcpy(provisioned_access_point.ssid.value, wifi_client_profile_ssid, provisioned_access_point.ssid.length);
-        provisioned_access_point.security      = string_to_security_type(wifi_client_security_type);
+        provisioned_access_point.ssid.length = strlen((char *)pdata.wifi_client_profile_ssid);
+        memcpy(provisioned_access_point.ssid.value, pdata.wifi_client_profile_ssid, provisioned_access_point.ssid.length);
+        provisioned_access_point.security      = string_to_security_type(pdata.wifi_client_security_type);
         provisioned_access_point.encryption    = SL_WIFI_CCMP_ENCRYPTION;
         provisioned_access_point.credential_id = id;
         printf("Security Type:%s\n",security_type_to_string(provisioned_access_point.security));
@@ -325,21 +322,14 @@ void fm_ap_sel_start(void)
 
 
         //  Keeping the station ipv4 record in profile_id_0
-        memcpy(&wifi_client_profile_4.config, &provisioned_access_point, sizeof(provisioned_access_point));
-//        wifi_client_profile_4.config = provisioned_access_point;
+        memcpy(&wifi_client_profile_local.config, &provisioned_access_point, sizeof(provisioned_access_point));
+//        wifi_client_profile_local.config = provisioned_access_point;
         sl_net_profile_id_t profile_id = SL_NET_PROFILE_ID_1;
-        status = sl_net_set_profile(SL_NET_WIFI_CLIENT_INTERFACE, profile_id, &wifi_client_profile_4);
+        status = sl_net_set_profile(SL_NET_WIFI_CLIENT_INTERFACE, profile_id, &wifi_client_profile_local);
+        memcpy(&pdata.profile, &wifi_client_profile_local, sizeof(wifi_client_profile_local));
 
-        printf("Writing wifi data to nvm...\n");
-        Ecode_t nvm_status;
-        nvm_status = nvm3_writeData(nvm3_defaultHandle, NVM3_KEY_WIFI_PROFILE, &wifi_client_profile_4, sizeof(wifi_client_profile_4));
-        if (nvm_status != ECODE_NVM3_OK){
-            printf("failed to write profile from nvm: 0x%lx\r\n", nvm_status);
-        }
-        nvm_status = nvm3_writeData(nvm3_defaultHandle, NVM3_KEY_WIFI_CREDENTIAL, &wifi_client_credential, sizeof(wifi_client_credential));
-        if (nvm_status != ECODE_NVM3_OK){
-            printf("failed to write profile from nvm: 0x%lx\r\n", nvm_status);
-        }
+        fm_write_data(&pdata);
+
         if (status != SL_STATUS_OK) {
           printf("Failed to set client profile: 0x%lx\r\n", status);
           return;
@@ -360,19 +350,7 @@ void fm_ap_sel_start(void)
         if(newMQTT_data)
           {
             printf("saving mqtt settings to nvm...\n");
-            Ecode_t nvm_status;
-            nvm_status = nvm3_writeData(nvm3_defaultHandle, NVM3_KEY_MQTT_ADDRESS, mqtt_server_address, sizeof(mqtt_server_address));
-            if (nvm_status != ECODE_NVM3_OK){
-                printf("failed to write mqtt broker IP nvm: 0x%lx\r\n", nvm_status);
-            }
-            nvm_status = nvm3_writeData(nvm3_defaultHandle, NVM3_KEY_MQTT_USERNAME, mqtt_client_username, sizeof(mqtt_client_username));
-            if (nvm_status != ECODE_NVM3_OK){
-                printf("failed to write mqtt username nvm: 0x%lx\r\n", nvm_status);
-            }
-            nvm_status = nvm3_writeData(nvm3_defaultHandle, NVM3_KEY_MQTT_PASSWORD, mqtt_client_password, sizeof(mqtt_client_password));
-            if (nvm_status != ECODE_NVM3_OK){
-                printf("failed to write mqtt password nvm: 0x%lx\r\n", nvm_status);
-            }
+            fm_write_data(&pdata);
             newMQTT_data = false;
           }
         break;
@@ -531,8 +509,8 @@ static sl_status_t connect_data_handler(sl_http_server_t *handle, sl_http_server
       if (tokens[a].type == JSMN_STRING) {
         if (memcmp(&received_data_buffer[tokens[a].start], SSID, tokens[a].end - tokens[a].start) == 0) {
           if (tokens[a + 1].type == JSMN_STRING) {
-            snprintf(wifi_client_profile_ssid,
-                     sizeof(wifi_client_profile_ssid),
+            snprintf(pdata.wifi_client_profile_ssid,
+                     sizeof(pdata.wifi_client_profile_ssid),
                      "%.*s",
                      tokens[a + 1].end - tokens[a + 1].start,
                      received_data_buffer + tokens[a + 1].start);
@@ -540,8 +518,8 @@ static sl_status_t connect_data_handler(sl_http_server_t *handle, sl_http_server
           }
         } else if (memcmp(&received_data_buffer[tokens[a].start], PASSPHRASE, tokens[a].end - tokens[a].start) == 0) {
           if (tokens[a].type == JSMN_STRING) {
-            snprintf(wifi_client_credential,
-                     sizeof(wifi_client_credential),
+            snprintf(pdata.wifi_client_credential,
+                     sizeof(pdata.wifi_client_credential),
                      "%.*s",
                      tokens[a + 1].end - tokens[a + 1].start,
                      received_data_buffer + tokens[a + 1].start);
@@ -549,8 +527,8 @@ static sl_status_t connect_data_handler(sl_http_server_t *handle, sl_http_server
           }
         } else if (memcmp(&received_data_buffer[tokens[a].start], SECURITY_TYPE, tokens[a].end - tokens[a].start)
                    == 0) {
-          snprintf(wifi_client_security_type,
-                   sizeof(wifi_client_security_type),
+          snprintf(pdata.wifi_client_security_type,
+                   sizeof(pdata.wifi_client_security_type),
                    "%.*s",
                    tokens[a + 1].end - tokens[a + 1].start,
                    received_data_buffer + tokens[a + 1].start);
@@ -618,30 +596,30 @@ static sl_status_t mqtt_settings_data_handler(sl_http_server_t *handle, sl_http_
       if (tokens[a].type == JSMN_STRING) {
           if (memcmp(&received_data_buffer[tokens[a].start], MQTT_SERVER, tokens[a].end - tokens[a].start)
             == 0) {
-            snprintf(mqtt_server_address,
-                     sizeof(mqtt_server_address),
+            snprintf(pdata.mqtt_server_address,
+                     sizeof(pdata.mqtt_server_address),
                      "%.*s",
                      tokens[a + 1].end - tokens[a + 1].start,
                      received_data_buffer + tokens[a + 1].start);
-            printf("MQTT Server: %s\n",mqtt_server_address);
+            printf("MQTT Server: %s\n", pdata.mqtt_server_address);
             mqtt_broker_found = true;
         } else if (memcmp(&received_data_buffer[tokens[a].start], MQTT_USERNAME, tokens[a].end - tokens[a].start)
             == 0){
-            snprintf(mqtt_client_username,
-                     sizeof(mqtt_client_username),
+            snprintf(pdata.mqtt_client_username,
+                     sizeof(pdata.mqtt_client_username),
                      "%.*s",
                      tokens[a + 1].end - tokens[a+1].start,
                      received_data_buffer + tokens[a + 1].start);
-            printf("MQTT Username: %s\n",mqtt_client_username);
+            printf("MQTT Username: %s\n",pdata.mqtt_client_username);
             mqtt_username_found = true;
         }else if (memcmp(&received_data_buffer[tokens[a].start], MQTT_PASSWORD, tokens[a].end - tokens[a].start)
             == 0){
-            snprintf(mqtt_client_password,
-                     sizeof(mqtt_client_password),
+            snprintf(pdata.mqtt_client_password,
+                     sizeof(pdata.mqtt_client_password),
                      "%.*s",
                      tokens[a + 1].end - tokens[a+1].start,
                      received_data_buffer + tokens[a + 1].start);
-            printf("MQTT password: %s\n",mqtt_client_password);
+            printf("MQTT password: %s\n",pdata.mqtt_client_password);
             mqtt_password_found = true;
         }
       }

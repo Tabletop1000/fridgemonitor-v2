@@ -29,12 +29,9 @@
 #include "sl_wifi.h"
 #include "string.h"
 #include "fm_comms.h"
+#include "fm_nvm.h"
 #include "app_ap_sel.h"
-#include "nvm3_default_config.h"
-#include "nvm3_default.h"
-#include "nvm3.h"
-#include "nvm3_hal_flash.h"
-#include "fm_nvm_keys.h"
+
 
 
 /******************************************************
@@ -45,7 +42,7 @@
 #define MQTT_BROKER_IP "2401:4901:1290:10de::1000"
 #endif
 
-#define MQTT_BROKER_PORT 1884
+#define MQTT_BROKER_PORT 1883
 
 #define CLIENT_PORT 2
 
@@ -59,7 +56,7 @@
 #define ENCRYPT_CONNECTION     0
 #define CERTIFICATE_INDEX      0
 #define KEEP_ALIVE_INTERVAL    0
-#define MQTT_CONNECT_TIMEOUT   1
+#define MQTT_CONNECT_TIMEOUT   5
 #define MQTT_KEEPALIVE_RETRIES 0
 
 #define SEND_CREDENTIALS 1
@@ -67,7 +64,7 @@
 /******************************************************
  *               Variable Definitions
  ******************************************************/
-
+extern program_data_t pdata;
 
 const sl_wifi_device_configuration_t wifi_mqtt_client_configuration = {
     .boot_option = LOAD_NWP_FW,
@@ -101,12 +98,6 @@ const sl_wifi_device_configuration_t wifi_mqtt_client_configuration = {
                 .ble_ext_feature_bit_map = 0,
                 .config_feature_bit_map  = 0 }
 };
-
-static char MQTT_BROKER_IP[64];
-
-static char USERNAME[32];
-
-static char PASSWORD[32];
 
 static bool sl_init_status = false;
 
@@ -239,7 +230,7 @@ void sl_net_error_to_text(sl_status_t status){
   }
 }
 
-fm_comms_status fm_comms_init()
+fm_error_t fm_comms_init()
 {
   DEBUGOUT("Initialising WiFi client interface.\n");
   sl_status_t status;
@@ -254,90 +245,31 @@ fm_comms_status fm_comms_init()
   if (status != SL_STATUS_OK) {
       DEBUGOUT("Failed to start Wi-Fi client interface: 0x%lx\r\n", status);
       sl_net_error_to_text(status);
-      return FMCOMMS_FAILED;
+      return FM_FAILED;
   }
   sl_init_status = true;
-  return FMCOMMS_SUCCESS;
+  return FM_SUCCESS;
 }
 
-fm_comms_status fm_comms_connect()
+fm_error_t fm_comms_connect()
 {
-  if(true != sl_init_status){
-      return FMCOMMS_NOT_INITIALISED;
-  }
-
-  Ecode_t nvm_status;
   sl_status_t status;
-  sl_net_wifi_client_profile_t profile;
+  if(true != sl_init_status){
+      return FM_NOT_INITIALISED;
+  }
 
-  size_t num_objects = 0;
-  status = nvm3_initDefault();
-  if(status != SL_STATUS_OK){
-      printf("Failed to initialise NVM: 0x%lx\r\n", status);
-      return FMCOMMS_NVM_ERROR;
-  }
-  num_objects = nvm3_countObjects(nvm3_defaultHandle);
-  char client_credential[64];
-  if(num_objects < 5){
-      printf("No objects in non-volatile memory\r\n");
-      return FMCOMMS_NVM_EMPTPY;
-  }
-  printf("Found %d object(s) in non-volatile memory\r\n", num_objects);
-  nvm_status = nvm3_readData(nvm3_defaultHandle,
-                             NVM3_KEY_WIFI_PROFILE,
-                             &profile,
-                             sizeof(profile));
-  if(nvm_status != ECODE_NVM3_OK){
-      printf("failed to read profile from nvm: 0x%lx\r\n", nvm_status);
-      return FMCOMMS_NVM_ERROR;
-  }
-  nvm_status = nvm3_readData(nvm3_defaultHandle,
-                             NVM3_KEY_WIFI_CREDENTIAL,
-                             &client_credential,
-                             sizeof(client_credential));
-  if(nvm_status != ECODE_NVM3_OK){
-      printf("failed to read credentials from nvm: 0x%lx\r\n", nvm_status);
-      return FMCOMMS_NVM_ERROR;
-  }
-  // Fetch the MQTT server address
-  nvm_status = nvm3_readData(nvm3_defaultHandle,
-                             NVM3_KEY_MQTT_ADDRESS,
-                             MQTT_BROKER_IP,
-                             sizeof(MQTT_BROKER_IP));
-  if(nvm_status != ECODE_NVM3_OK){
-      printf("failed to mqtt broker IP from nvm: 0x%lx\r\n", nvm_status);
-      return FMCOMMS_NVM_ERROR;
-  }
-  // Fetch the MQTT client username
-  nvm_status = nvm3_readData(nvm3_defaultHandle,
-                             NVM3_KEY_MQTT_USERNAME,
-                             USERNAME,
-                             sizeof(USERNAME));
-  if(nvm_status != ECODE_NVM3_OK){
-      printf("failed to mqtt username from nvm: 0x%lx\r\n", nvm_status);
-      return FMCOMMS_NVM_ERROR;
-  }
-  // Fetch the MQTT client password
-  nvm_status = nvm3_readData(nvm3_defaultHandle,
-                             NVM3_KEY_MQTT_PASSWORD,
-                             PASSWORD,
-                             sizeof(PASSWORD));
-  if(nvm_status != ECODE_NVM3_OK){
-      printf("failed to mqtt password from nvm: 0x%lx\r\n", nvm_status);
-      return FMCOMMS_NVM_ERROR;
-  }
   sl_wifi_credential_id_t id = 2; // TODO: make this a define
   sl_wifi_credential_t cred  = { 0 };
 
   cred.type = SL_WIFI_PSK_CREDENTIAL;
-  memcpy(cred.psk.value, client_credential, strlen((char *)client_credential));
+  memcpy(cred.psk.value, pdata.wifi_client_credential, strlen((char *)pdata.wifi_client_credential));
   status = sl_net_set_credential(id,
                                  SL_NET_WIFI_PSK,
-                                 client_credential,
-                                 strlen((char *)client_credential));
+                                 pdata.wifi_client_credential,
+                                 strlen((char *)pdata.wifi_client_credential));
   if(status != SL_STATUS_OK){
       printf("failed to set wifi credential '%s': 0x%lx\r\n",
-             client_credential,
+             pdata.wifi_client_credential,
              status);
   }
 
@@ -345,17 +277,17 @@ fm_comms_status fm_comms_connect()
       printf("Failed to fetch network profile %d. Error: 0x%lx\r\n",
              SL_NET_PROFILE_ID_1,
              status);
-      return FMCOMMS_FAILED;
+      return FM_FAILED;
   }
 
   char ssid_buf[50];
-  snprintf(ssid_buf,profile.config.ssid.length,"%s",profile.config.ssid.value);
-  DEBUGOUT("Attempting to connect to '%s':'%s'\r\n",ssid_buf,client_credential);
+  snprintf(ssid_buf,pdata.profile.config.ssid.length,"%s",pdata.profile.config.ssid.value);
+  DEBUGOUT("Attempting to connect to '%s':'%s'\r\n",ssid_buf,pdata.wifi_client_credential);
 
   sl_wifi_set_join_callback(join_callback_handler, NULL);
 
   status = sl_wifi_connect(SL_WIFI_CLIENT_2_4GHZ_INTERFACE,
-                           &profile.config,
+                           &pdata.profile.config,
                            18000);
 
   if (status == SL_STATUS_OK) {
@@ -363,27 +295,27 @@ fm_comms_status fm_comms_connect()
   } else if (status == SL_STATUS_SI91X_NO_AP_FOUND) {
       char ssid_name[32];
       snprintf(ssid_name,
-               profile.config.ssid.length+1,
+               pdata.profile.config.ssid.length+1,
                "%s",
-               profile.config.ssid.value);
+               pdata.profile.config.ssid.value);
       printf("WiFi network %s not found\r\n", ssid_name);
-      return FMCOMMS_WIFI_NOT_FOUND;
+      return FM_WIFI_NOT_FOUND;
   } else {
       printf("Failed to bring Wi-Fi client interface up: 0x%lx\r\n", status);
       sl_net_error_to_text(status);
       status = sl_net_deinit(SL_NET_WIFI_CLIENT_INTERFACE);
-      return FMCOMMS_FAILED;
+      return FM_FAILED;
   }
 
   sl_ip_address_t ip_address            = { 0 };
-  status = sl_si91x_configure_ip_address(&profile.ip, SL_SI91X_WIFI_CLIENT_VAP_ID);
+  status = sl_si91x_configure_ip_address(&pdata.profile.ip, SL_SI91X_WIFI_CLIENT_VAP_ID);
   if (status != SL_STATUS_OK) {
       printf("IPv4 address configuration is failed : 0x%lx\r\n", status);
-      return FMCOMMS_FAILED;
+      return FM_FAILED;
   }
 
   printf("IPv4 address configuration complete\r\n");
-  memcpy(&ip_address.ip.v4.bytes, &profile.ip.ip.v4.ip_address.bytes, sizeof(sl_ipv4_address_t));
+  memcpy(&ip_address.ip.v4.bytes, &pdata.profile.ip.ip.v4.ip_address.bytes, sizeof(sl_ipv4_address_t));
   printf("Client IPv4: ");
   print_sl_ipv4_address(&ip_address.ip.v4);
   printf("\r\n");
@@ -397,7 +329,7 @@ fm_comms_status fm_comms_connect()
       printf("Set DNS address failed : 0x%lx\r\n", status);
   }
 
-  return FMCOMMS_SUCCESS;
+  return FM_SUCCESS;
 }
 
 void fm_comms_deint()
@@ -441,14 +373,15 @@ uint8_t fm_is_mqtt_connected()
   return is_mqtt_connected;
 }
 
-fm_comms_status fm_comms_publish_data(const char * data, size_t len, 
+fm_error_t fm_comms_publish_data(const char * data, size_t len, 
                                       const char * topic, size_t topic_len, 
                                       const char * device_id, size_t device_id_len)
 {
+  // TO-DO: Don't attempt reconnection here. Fail out of the function and go back to the state machine.
   if (SL_MQTT_CLIENT_CONNECTED != client.state){
       DEBUGOUT("Publish failed because client is disconnected:  %0xd\r\n", client.state);
       sl_mqtt_client_connect_v2(&client, NULL, NULL, NULL, 0);
-      return FMCOMMS_FAILED;
+      return FM_FAILED;
   }
 
   char topic_and_id[100] = {0};
@@ -467,18 +400,18 @@ fm_comms_status fm_comms_publish_data(const char * data, size_t len,
   sl_status_t status = sl_mqtt_client_publish(&client, &msg, timeout_val_ms, NULL);
   if ((status != SL_STATUS_IN_PROGRESS) && (status != SL_STATUS_OK)) {
       DEBUGOUT("Failed to publish message: 0x%lx\r\n", status);
-      return FMCOMMS_FAILED;
+      return FM_FAILED;
   }
 
-  return FMCOMMS_SUCCESS;
+  return FM_SUCCESS;
 }
 
-fm_comms_status fm_comms_mqtt_start()
+fm_error_t fm_comms_mqtt_start()
 {
   // Only attempt MQTT connection if WiFi is active
   if(1U != fm_is_wifi_connected()){
       printf("Aborting MQTT connection. WiFi not found\r\n");
-      return FMCOMMS_MQTT_ERROR;
+      return FM_MQTT_ERROR;
   }
 
   sl_status_t status;
@@ -491,7 +424,7 @@ fm_comms_status fm_comms_mqtt_start()
                                      sizeof(cacert) - 1);
       if (status != SL_STATUS_OK) {
           DEBUGOUT("Loading TLS CA certificate in to FLASH Failed, Error Code : 0x%lX\r\n", status);
-          return FMCOMMS_MQTT_ERROR;
+          return FM_MQTT_ERROR;
       }
       DEBUGOUT("Load TLS CA certificate at index %d Success\r\n", 0);
   }
@@ -499,10 +432,10 @@ fm_comms_status fm_comms_mqtt_start()
   if (SEND_CREDENTIALS) {
       uint16_t username_length, password_length;
 
-      printf("Username: %s Password: %s \n",USERNAME, PASSWORD);
+      printf("Username: %s Password: %s \n",pdata.mqtt_client_username, pdata.mqtt_client_password);
 
-      username_length = strlen(USERNAME);
-      password_length = strlen(PASSWORD);
+      username_length = strlen(pdata.mqtt_client_username);
+      password_length = strlen(pdata.mqtt_client_password);
 
       uint32_t malloc_size =
           sizeof(sl_mqtt_client_credentials_t) +
@@ -516,8 +449,8 @@ fm_comms_status fm_comms_mqtt_start()
       client_credentails->username_length = username_length;
       client_credentails->password_length = password_length;
 
-      memcpy(&client_credentails->data[0], USERNAME, username_length);
-      memcpy(&client_credentails->data[username_length], PASSWORD, password_length);
+      memcpy(&client_credentails->data[0], pdata.mqtt_client_username, username_length);
+      memcpy(&client_credentails->data[username_length], pdata.mqtt_client_password, password_length);
 
       status = sl_net_set_credential(SL_NET_MQTT_CLIENT_CREDENTIAL_ID(0),
                                      SL_NET_MQTT_CLIENT_CREDENTIAL,
@@ -528,7 +461,7 @@ fm_comms_status fm_comms_mqtt_start()
           mqtt_client_cleanup();
           DEBUGOUT("Failed to set credentials: 0x%lx\r\n ", status);
 
-          return FMCOMMS_MQTT_ERROR;
+          return FM_MQTT_ERROR;
       }
       DEBUGOUT("Set credentials Success \r\n ");
 
@@ -541,7 +474,7 @@ fm_comms_status fm_comms_mqtt_start()
       DEBUGOUT("Failed to initialise MQTT client: 0x%lx\r\n", status);
 
       mqtt_client_cleanup();
-      return FMCOMMS_MQTT_ERROR;
+      return FM_MQTT_ERROR;
   }
   DEBUGOUT("MQTT client initialised successfully \r\n");
 
@@ -554,21 +487,21 @@ fm_comms_status fm_comms_mqtt_start()
   if (status != 0x1) {
       DEBUGOUT("\r\nIPv6 conversion failed.\r\n");
       mqtt_client_cleanup();
-      return FMCOMMS_MQTT_ERROR;
+      return FM_MQTT_ERROR;
   }
   mqtt_broker_configuration.ip.type = SL_IPV6;
 #else
   sl_ip_address_t ip_addr;
-  status = sl_net_dns_resolve_hostname(MQTT_BROKER_IP, 4000, SL_NET_DNS_TYPE_IPV4, &ip_addr);
+  status = sl_net_dns_resolve_hostname(pdata.mqtt_server_address, 4000, SL_NET_DNS_TYPE_IPV4, &ip_addr);
   if (status == SL_STATUS_OK) {
       mqtt_broker_configuration.ip = ip_addr;
   } else {
     DEBUGOUT("Failed to resolve hostname %s with error 0x%lx. Attempting direct IP address connection...\n",
-            MQTT_BROKER_IP, status);
-    status = sl_net_inet_addr(MQTT_BROKER_IP, &mqtt_broker_configuration.ip.ip.v4.value);
+            pdata.mqtt_server_address, status);
+    status = sl_net_inet_addr(pdata.mqtt_server_address, &mqtt_broker_configuration.ip.ip.v4.value);
     if (status != SL_STATUS_OK) {
         DEBUGOUT("Failed to convert IP address: 0x%lx \r\n", status);
-        return FMCOMMS_FAILED; // return Failed so that we don't try to reconnect
+        return FM_FAILED; // return Failed so that we don't try to reconnect
                                 // with broken IP address
     }
   }
@@ -581,20 +514,20 @@ fm_comms_status fm_comms_mqtt_start()
                                   &mqtt_client_configuration,
                                   2000);
   osDelay(200U);
-  DEBUGOUT("MQTT connection status: 0x%lx\r\n", status);
+
   if(status != SL_STATUS_OK) {
       DEBUGOUT("Failed to connect to mqtt broker: 0x%lx\r\n", status);
-      return FMCOMMS_MQTT_ERROR;
+      return FM_MQTT_ERROR;
   }
   if(client.state == SL_MQTT_CLIENT_CONNECTED){
       is_mqtt_connected = 1U;
   } else {
       is_mqtt_connected = 0U;
-      return FMCOMMS_MQTT_ERROR;
+      return FM_MQTT_ERROR;
   }
 
   DEBUGOUT("Connected to MQTT broker successfully \r\n");
-  return FMCOMMS_SUCCESS;
+  return FM_SUCCESS;
 }
 
 bool fm_comms_mqtt_is_connected()
@@ -605,13 +538,13 @@ bool fm_comms_mqtt_is_connected()
     return true;
 }
 
-fm_comms_status fm_comms_mqtt_stop()
+fm_error_t fm_comms_mqtt_stop()
 {
-  fm_comms_status status = FMCOMMS_FAILED;
+  fm_error_t status = FM_FAILED;
   if(fm_comms_mqtt_is_connected()){
     sl_status_t s = sl_mqtt_client_deinit(&client);
     if(s != SL_STATUS_FAIL)
-      status = FMCOMMS_SUCCESS;
+      status = FM_SUCCESS;
   }
   return status;
 }

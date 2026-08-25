@@ -17,6 +17,7 @@
 #include "rsi_debug.h"
 #include "fm_sensors.h"
 #include "fm_comms.h"
+#include "fm_nvm.h"
 #include "app_ap_sel.h"
 #include "ota_update.h"
 #include "interpolation_search.h"
@@ -37,7 +38,7 @@
 #include "nvm3_default.h"
 #include <stdatomic.h>
 
-static const char device_id[] = "A000001";
+program_data_t pdata;
 
 enum {
   LED_RED,
@@ -117,6 +118,8 @@ app_init ()
   sl_gpio_driver_init();
 
   sl_gpio_set_configuration(sl_gpio_pin_config_49);
+
+  fm_nvm_init();
 
   led_thread_id = osThreadNew ((osThreadFunc_t) led_thread, NULL,
                                 &led_thread_attributes);
@@ -248,32 +251,32 @@ void publish_all_sensor_data(sensors_t* data)
   //printf(buf_data, "%0.2f", voltage_to_temperature(value));
   
   
-  sprintf(buf_data, "%0.2f", data->thermistor_1);
-  fm_comms_publish_data (buf_data,strlen (buf_data),"temperature1",strlen ("temperature1"), device_id, strlen(device_id));
+  sprintf(buf_data, "%0.3f", data->thermistor_1);
+  fm_comms_publish_data (buf_data,strlen (buf_data),"temperature1",strlen ("temperature1"), pdata.device_id, strlen(pdata.device_id));
   DEBUGOUT("%s: %s\r\n","temperature1:", buf_data);
   
-  sprintf(buf_data, "%0.2f", data->thermistor_2);
-  fm_comms_publish_data (buf_data,strlen (buf_data),"temperature2",strlen ("temperature2"), device_id, strlen(device_id));
+  sprintf(buf_data, "%0.3f", data->thermistor_2);
+  fm_comms_publish_data (buf_data,strlen (buf_data),"temperature2",strlen ("temperature2"), pdata.device_id, strlen(pdata.device_id));
   DEBUGOUT("%s: %s\r\n","temperature2:", buf_data);
   
-  sprintf(buf_data, "%0.2f", data->thermistor_3);
-  fm_comms_publish_data (buf_data,strlen (buf_data),"temperature3",strlen ("temperature3"), device_id, strlen(device_id));
+  sprintf(buf_data, "%0.3f", data->thermistor_3);
+  fm_comms_publish_data (buf_data,strlen (buf_data),"temperature3",strlen ("temperature3"), pdata.device_id, strlen(pdata.device_id));
   DEBUGOUT("%s: %s\r\n","temperature3:", buf_data);
   
-  sprintf(buf_data, "%0.2f", data->thermistor_4);
-  fm_comms_publish_data (buf_data,strlen (buf_data),"temperature4",strlen ("temperature4"), device_id, strlen(device_id));
+  sprintf(buf_data, "%0.3f", data->thermistor_4);
+  fm_comms_publish_data (buf_data,strlen (buf_data),"temperature4",strlen ("temperature4"), pdata.device_id, strlen(pdata.device_id));
   DEBUGOUT("%s: %s\r\n","temperature4:", buf_data);
   
-  sprintf(buf_data, "%0.2f", data->pressure_1);
-  fm_comms_publish_data (buf_data,strlen (buf_data),"pressure1",strlen ("pressure1"), device_id, strlen(device_id));
+  sprintf(buf_data, "%0.3f", data->pressure_1);
+  fm_comms_publish_data (buf_data,strlen (buf_data),"pressure1",strlen ("pressure1"), pdata.device_id, strlen(pdata.device_id));
   DEBUGOUT("%s: %s\r\n","pressure1:", buf_data);
   
-  sprintf(buf_data, "%0.2f", data->pressure_2);
-  fm_comms_publish_data (buf_data,strlen (buf_data),"pressure2",strlen ("pressure2"), device_id, strlen(device_id));
+  sprintf(buf_data, "%0.3f", data->pressure_2);
+  fm_comms_publish_data (buf_data,strlen (buf_data),"pressure2",strlen ("pressure2"), pdata.device_id, strlen(pdata.device_id));
   DEBUGOUT("%s: %s\r\n","pressure2:", buf_data);
   
-  sprintf(buf_data, "%0.2f", data->power);
-  fm_comms_publish_data (buf_data,strlen (buf_data),"power",strlen ("power"), device_id, strlen(device_id));
+  sprintf(buf_data, "%0.3f", data->power);
+  fm_comms_publish_data (buf_data,strlen (buf_data),"power",strlen ("power"), pdata.device_id, strlen(pdata.device_id));
   DEBUGOUT("%s: %s\r\n","power:", buf_data);
 
 }
@@ -320,19 +323,19 @@ int publish_sensor_data(ESensorType_t sensor_type, float value)
       break;
   }
   char buf[100] = {0};
-  sprintf(buf,"%s/%s", device_id, buf_topic);
+  sprintf(buf,"%s/%s", pdata.device_id, buf_topic);
   DEBUGOUT("%s: %s\r\n",buf, buf_data);
 
-  fm_comms_status status = fm_comms_publish_data (
+  fm_error_t status = fm_comms_publish_data (
       buf_data,
       strlen (buf_data),
       buf_topic,
       strlen (buf_topic),
-      device_id,
-      strlen(device_id)
+      pdata.device_id,
+      strlen(pdata.device_id)
   );
 
-  if(status != FMCOMMS_SUCCESS){
+  if(status != FM_SUCCESS){
       return EXIT_FAILURE;
   }
   return EXIT_SUCCESS;
@@ -394,10 +397,10 @@ fridge_monitor (void *argument)
       switch(state){
         case INITIALISING:{
           led_cmd = LED_ORANGE_FLASH;
-          fm_comms_status status = FMCOMMS_NOT_INITIALISED;
-
+          fm_error_t status = FM_NOT_INITIALISED;
+          fm_read_data(&pdata);
           status = fm_comms_init();
-          if(FMCOMMS_SUCCESS == status){
+          if(FM_SUCCESS == status){
               state = CONNECTING;
           }else{
               state = FM_ERROR;
@@ -406,16 +409,16 @@ fridge_monitor (void *argument)
         }
         case CONNECTING:{
           led_cmd = LED_ORANGE;
-          fm_comms_status s = 0;
+          fm_error_t s = 0;
               s = fm_comms_connect();
-          if(FMCOMMS_SUCCESS == s){
+          if(FM_SUCCESS == s){
               state = MQTT;
-          }else if(FMCOMMS_WIFI_NOT_FOUND == s){
+          }else if(FM_WIFI_NOT_FOUND == s){
               state = CONNECTING;
               osDelay(2000); // If WiFi didn't connect, wait 2sec and try again
-          }else if(FMCOMMS_NOT_INITIALISED){
+          }else if(FM_NOT_INITIALISED){
               state = INITIALISING;
-          }else if(FMCOMMS_NVM_EMPTPY == s){
+          }else if(FM_NVM_EMPTY == s){
             state = NO_SETUP;
           } else {
               state = FM_ERROR;
@@ -425,11 +428,11 @@ fridge_monitor (void *argument)
         case MQTT:{
           led_cmd = LED_CYAN_FLASH;
           if(1U == fm_is_wifi_connected()){
-              fm_comms_status s = fm_comms_mqtt_start();
-              if(FMCOMMS_SUCCESS == s){
+              fm_error_t s = fm_comms_mqtt_start();
+              if(FM_SUCCESS == s){
                   fm_sensors_init();
                   state = OPERATING;
-              }else if(FMCOMMS_MQTT_ERROR){
+              }else if(FM_MQTT_ERROR){
                   state = MQTT;
                   osDelay(5000); // If MQTT failed, wait 2sec and try again
               } else {
