@@ -28,7 +28,7 @@
  *
  ******************************************************************************/
 
-#include <resources/dashboard.h>
+#include <resources/dashboard2.h>
 #include "stdbool.h"
 #include "sl_net.h"
 #include "app_ap_sel.h"
@@ -100,6 +100,7 @@
 #define MQTT_USERNAME "username"
 #define MQTT_PASSWORD "password"
 #define DEVICE_ID     "A000001"
+#define CONFIG_REQUEST_BUFFER_SIZE 512
 
 extern program_data_t pdata;
 
@@ -108,7 +109,7 @@ typedef enum {
   PROVISIONING_INIT_STATE,
   PROVISIONING_STATE,
   CONNECTING_STATE,
-  CONNECTED_STATE,
+  COMPLETED_STATE,
   DISCONNECTING_STATE,
 } app_state_t;
 
@@ -129,9 +130,11 @@ static char *security_type_to_string(sl_wifi_security_t security_type);
 static sl_status_t index_request_handler(sl_http_server_t *handle, sl_http_server_request_t *req);
 static sl_status_t default_handler(sl_http_server_t *handle, sl_http_server_request_t *req);
 static sl_status_t connect_page_request_handler(sl_http_server_t *handle, sl_http_server_request_t *req);
-static sl_status_t connect_data_handler(sl_http_server_t *handle, sl_http_server_request_t *req);
+// static sl_status_t connect_data_handler(sl_http_server_t *handle, sl_http_server_request_t *req);
 static sl_status_t wifi_scan_request_handler(sl_http_server_t *handle, sl_http_server_request_t *req);
-static sl_status_t mqtt_settings_data_handler(sl_http_server_t *handle, sl_http_server_request_t *req);
+// static sl_status_t mqtt_settings_data_handler(sl_http_server_t *handle, sl_http_server_request_t *req);
+static sl_status_t config_handler(sl_http_server_t *handle, sl_http_server_request_t *req);
+static bool extract_json_string(const char *json, const char *key, char *out, size_t out_size);
 
 /******************************************************
  *               Variable Definitions
@@ -171,9 +174,10 @@ static const sl_http_server_handler_t provisioning_server_request_handlers[] = {
   { .uri = "/", .handler = index_request_handler },
   { .uri = "/index.html", .handler = index_request_handler },
   { .uri = "/connect.html", .handler = connect_page_request_handler },
-  { .uri = "/connect", .handler = connect_data_handler },
+  //{ .uri = "/connect", .handler = connect_data_handler },
   { .uri = "/scan", .handler = wifi_scan_request_handler },
-  { .uri = "/mqtt", .handler = mqtt_settings_data_handler }
+ // { .uri = "/mqtt", .handler = mqtt_settings_data_handler },
+  { .uri = "/config", .handler = config_handler }
 };
 
 /******************************************************
@@ -296,12 +300,12 @@ void fm_ap_sel_start(void)
         printf("Wi-Fi AP deinitialized\r\n");
 
         // Initialize the Wi-Fi client interface
-        status = sl_net_init(SL_NET_WIFI_CLIENT_INTERFACE, &wifi_mqtt_client_configuration, NULL, NULL);
-        if (status != SL_STATUS_OK) {
-          printf("Failed to start Wi-Fi client interface: 0x%lx\r\n", status);
-          return;
-        }
-        printf("Wi-Fi client interface initialized\r\n");
+        // status = sl_net_init(SL_NET_WIFI_CLIENT_INTERFACE, &wifi_mqtt_client_configuration, NULL, NULL);
+        // if (status != SL_STATUS_OK) {
+        //   printf("Failed to start Wi-Fi client interface: 0x%lx\r\n", status);
+        //   return;
+        // }
+        // printf("Wi-Fi client interface initialized\r\n");
 
         sl_wifi_credential_t cred  = { 0 };
         sl_wifi_credential_id_t id = 2; //SL_NET_DEFAULT_WIFI_CLIENT_CREDENTIAL_ID;
@@ -319,24 +323,13 @@ void fm_ap_sel_start(void)
         provisioned_access_point.credential_id = id;
         printf("Security Type:%s\n",security_type_to_string(provisioned_access_point.security));
 
-
-
         //  Keeping the station ipv4 record in profile_id_0
         memcpy(&wifi_client_profile_local.config, &provisioned_access_point, sizeof(provisioned_access_point));
-//        wifi_client_profile_local.config = provisioned_access_point;
-        sl_net_profile_id_t profile_id = SL_NET_PROFILE_ID_1;
-        status = sl_net_set_profile(SL_NET_WIFI_CLIENT_INTERFACE, profile_id, &wifi_client_profile_local);
         memcpy(&pdata.profile, &wifi_client_profile_local, sizeof(wifi_client_profile_local));
 
         fm_write_data(&pdata);
 
-        if (status != SL_STATUS_OK) {
-          printf("Failed to set client profile: 0x%lx\r\n", status);
-          return;
-        }
-        printf("AP-SEL: set profile %d success\r\n", profile_id);
-
-        app_state = CONNECTED_STATE;
+        app_state = COMPLETED_STATE;
         break;
       }
       case DISCONNECTING_STATE: {
@@ -354,7 +347,7 @@ void fm_ap_sel_start(void)
             newMQTT_data = false;
           }
         break;
-      case CONNECTED_STATE: {
+      case COMPLETED_STATE: {
         finished = true;
         break;
       }
@@ -476,180 +469,6 @@ static sl_status_t connect_page_request_handler(sl_http_server_t *handle, sl_htt
   return SL_STATUS_OK;
 }
 
-static sl_status_t connect_data_handler(sl_http_server_t *handle, sl_http_server_request_t *req)
-{
-  sl_http_server_response_t http_response = DEFAULT_HTTP_RESPONSE_METHOD_NOT_ALLOWED;
-
-  printf("Got request %s with data length : %lu\r\n", req->uri.path, req->request_data_length);
-
-  // Handle POST requests for connection data
-  if (req->type == SL_HTTP_REQUEST_POST) {
-    char received_data_buffer[200]        = { 0 }; // Buffer to hold received data
-    sl_http_recv_req_data_t received_data = { 0 }; // Structure to hold received data
-    char response_data[100]               = { 0 }; // Buffer for response data
-    jsmn_parser parser;                            // JSON parser
-    jsmntok_t tokens[16];                          // JSON tokens
-    bool ssid_found          = false;
-    bool security_type_found = false;
-    bool passphrase_found    = false;
-
-    received_data.request       = req;
-    received_data.buffer        = (uint8_t *)received_data_buffer;
-    received_data.buffer_length = sizeof(received_data_buffer) - 1;
-    sl_http_server_read_request_data(handle, &received_data); // Read request data
-
-    jsmn_init(&parser); // Initialize JSON parser
-
-    memset(&tokens, 0, sizeof(tokens));
-    int num_tokens = sizeof(tokens) / sizeof(jsmntok_t);
-    jsmn_parse(&parser, received_data_buffer, req->request_data_length, tokens, num_tokens);
-
-    // Process JSON tokens to extract SSID, passphrase, and security type
-    for (uint8_t a = 1; a < num_tokens; a += 2) {
-      if (tokens[a].type == JSMN_STRING) {
-        if (memcmp(&received_data_buffer[tokens[a].start], SSID, tokens[a].end - tokens[a].start) == 0) {
-          if (tokens[a + 1].type == JSMN_STRING) {
-            snprintf(pdata.wifi_client_profile_ssid,
-                     sizeof(pdata.wifi_client_profile_ssid),
-                     "%.*s",
-                     tokens[a + 1].end - tokens[a + 1].start,
-                     received_data_buffer + tokens[a + 1].start);
-            ssid_found = true;
-          }
-        } else if (memcmp(&received_data_buffer[tokens[a].start], PASSPHRASE, tokens[a].end - tokens[a].start) == 0) {
-          if (tokens[a].type == JSMN_STRING) {
-            snprintf(pdata.wifi_client_credential,
-                     sizeof(pdata.wifi_client_credential),
-                     "%.*s",
-                     tokens[a + 1].end - tokens[a + 1].start,
-                     received_data_buffer + tokens[a + 1].start);
-            passphrase_found = true;
-          }
-        } else if (memcmp(&received_data_buffer[tokens[a].start], SECURITY_TYPE, tokens[a].end - tokens[a].start)
-                   == 0) {
-          snprintf(pdata.wifi_client_security_type,
-                   sizeof(pdata.wifi_client_security_type),
-                   "%.*s",
-                   tokens[a + 1].end - tokens[a + 1].start,
-                   received_data_buffer + tokens[a + 1].start);
-          security_type_found = true;
-        }
-      }
-    }
-
-    // Check if all required fields were found
-    if (ssid_found == false || passphrase_found == false || security_type_found == false) {
-        // Respond with Bad Request if any field is missing
-        http_response.response_code        = SL_HTTP_RESPONSE_BAD_REQUEST;
-        http_response.data                 = (uint8_t *)METHOD_BAD_REQUEST;
-        http_response.current_data_length  = sizeof(METHOD_BAD_REQUEST) - 1;
-        http_response.expected_data_length = http_response.current_data_length;
-        sl_http_server_send_response(handle, &http_response);
-    } else {
-        // Respond with success if all fields are correctly received
-        snprintf(response_data, sizeof(response_data) - 1, "{\"status\": \"ok\"}");
-        http_response.response_code        = SL_HTTP_RESPONSE_OK;
-        http_response.content_type         = SL_HTTP_CONTENT_TYPE_APPLICATION_JSON;
-        http_response.data                 = (uint8_t *)response_data;
-        http_response.current_data_length  = strlen(response_data);
-        http_response.expected_data_length = http_response.current_data_length;
-        sl_http_server_send_response(handle, &http_response);
-        app_state = CONNECTING_STATE; // Transition to the connecting state
-    }
-  } else {
-      // Handle methods other than POST with Method Not Allowed response
-      sl_http_server_send_response(handle, &http_response);
-  }
-  return SL_STATUS_OK;
-}
-
-static sl_status_t mqtt_settings_data_handler(sl_http_server_t *handle, sl_http_server_request_t *req)
-{
-  sl_http_server_response_t http_response = DEFAULT_HTTP_RESPONSE_METHOD_NOT_ALLOWED;
-
-  printf("Got request %s with data length : %lu\r\n", req->uri.path, req->request_data_length);
-
-  // Handle POST requests for connection data
-  if (req->type == SL_HTTP_REQUEST_POST) {
-    char received_data_buffer[200]        = { 0 }; // Buffer to hold received data
-    sl_http_recv_req_data_t received_data = { 0 }; // Structure to hold received data
-    char response_data[100]               = { 0 }; // Buffer for response data
-    jsmn_parser parser;                            // JSON parser
-    jsmntok_t tokens[16];                          // JSON tokens
-    bool mqtt_broker_found = false;
-    bool mqtt_username_found = false;
-    bool mqtt_password_found = false;
-
-    received_data.request       = req;
-    received_data.buffer        = (uint8_t *)received_data_buffer;
-    received_data.buffer_length = sizeof(received_data_buffer) - 1;
-    sl_http_server_read_request_data(handle, &received_data); // Read request data
-
-    jsmn_init(&parser); // Initialize JSON parser
-
-    memset(&tokens, 0, sizeof(tokens));
-    int num_tokens = sizeof(tokens) / sizeof(jsmntok_t);
-    jsmn_parse(&parser, received_data_buffer, req->request_data_length, tokens, num_tokens);
-
-    // Process JSON tokens to extract SSID, passphrase, and security type
-    for (uint8_t a = 1; a < num_tokens; a += 2) {
-      if (tokens[a].type == JSMN_STRING) {
-          if (memcmp(&received_data_buffer[tokens[a].start], MQTT_SERVER, tokens[a].end - tokens[a].start)
-            == 0) {
-            snprintf(pdata.mqtt_server_address,
-                     sizeof(pdata.mqtt_server_address),
-                     "%.*s",
-                     tokens[a + 1].end - tokens[a + 1].start,
-                     received_data_buffer + tokens[a + 1].start);
-            printf("MQTT Server: %s\n", pdata.mqtt_server_address);
-            mqtt_broker_found = true;
-        } else if (memcmp(&received_data_buffer[tokens[a].start], MQTT_USERNAME, tokens[a].end - tokens[a].start)
-            == 0){
-            snprintf(pdata.mqtt_client_username,
-                     sizeof(pdata.mqtt_client_username),
-                     "%.*s",
-                     tokens[a + 1].end - tokens[a+1].start,
-                     received_data_buffer + tokens[a + 1].start);
-            printf("MQTT Username: %s\n",pdata.mqtt_client_username);
-            mqtt_username_found = true;
-        }else if (memcmp(&received_data_buffer[tokens[a].start], MQTT_PASSWORD, tokens[a].end - tokens[a].start)
-            == 0){
-            snprintf(pdata.mqtt_client_password,
-                     sizeof(pdata.mqtt_client_password),
-                     "%.*s",
-                     tokens[a + 1].end - tokens[a+1].start,
-                     received_data_buffer + tokens[a + 1].start);
-            printf("MQTT password: %s\n",pdata.mqtt_client_password);
-            mqtt_password_found = true;
-        }
-      }
-    }
-
-    // Check if all required fields were found
-    if (mqtt_password_found == false || mqtt_broker_found == false || mqtt_username_found == false) {
-        // Respond with Bad Request if any field is missing
-        http_response.response_code        = SL_HTTP_RESPONSE_BAD_REQUEST;
-        http_response.data                 = (uint8_t *)METHOD_BAD_REQUEST;
-        http_response.current_data_length  = sizeof(METHOD_BAD_REQUEST) - 1;
-        http_response.expected_data_length = http_response.current_data_length;
-        sl_http_server_send_response(handle, &http_response);
-    } else {
-        // Respond with success if all fields are correctly received
-        snprintf(response_data, sizeof(response_data) - 1, "{\"status\": \"ok\"}");
-        http_response.response_code        = SL_HTTP_RESPONSE_OK;
-        http_response.content_type         = SL_HTTP_CONTENT_TYPE_APPLICATION_JSON;
-        http_response.data                 = (uint8_t *)response_data;
-        http_response.current_data_length  = strlen(response_data);
-        http_response.expected_data_length = http_response.current_data_length;
-        sl_http_server_send_response(handle, &http_response);
-        newMQTT_data = true;
-    }
-  } else {
-      // Handle methods other than POST with Method Not Allowed response
-      sl_http_server_send_response(handle, &http_response);
-  }
-  return SL_STATUS_OK;
-}
 
 static sl_status_t wlan_app_scan_callback_handler(sl_wifi_event_t event,
                                                   sl_wifi_scan_result_t *scan_result,
@@ -790,7 +609,128 @@ static sl_status_t wifi_scan_request_handler(sl_http_server_t *handle, sl_http_s
   return SL_STATUS_OK;
 }
 
-static sl_status_t default_handler(sl_http_server_t *handle, sl_http_server_request_t *req)
+static sl_status_t config_handler(sl_http_server_t *handle, sl_http_server_request_t *req)
+{
+  sl_http_server_response_t http_response = DEFAULT_HTTP_RESPONSE_METHOD_NOT_ALLOWED;
+  if (req->type == SL_HTTP_REQUEST_GET)
+  {
+    printf("Got HTTP request for configuration data\r\n");
+
+    sl_http_header_t header = {.key = "Server", .value = "SI917-HTTPServer"};
+
+    http_response.response_code = SL_HTTP_RESPONSE_OK;
+    http_response.content_type = SL_HTTP_CONTENT_TYPE_APPLICATION_JSON;
+    http_response.headers = &header;
+    http_response.header_count = 1;
+
+    char json[512];
+    int written = snprintf(json, sizeof(json),
+                           "{\"ssid\":\"%s\",\"security_type\":\"%s\","
+                           "\"mqtt_server\":\"%s\",\"mqtt_username\":\"%s\"}",
+                           pdata.wifi_client_profile_ssid, security_type_to_string(pdata.profile.config.security),
+                           pdata.mqtt_server_address, pdata.mqtt_client_username);
+
+    http_response.data = (uint8_t *)json;
+    http_response.current_data_length = (uint32_t)written;
+    http_response.expected_data_length = (uint32_t)written;
+
+    sl_http_server_write_data(handle, http_response.data, sizeof(http_response.data));
+    sl_http_server_send_response(handle, &http_response);
+  }
+  else if (req->type == SL_HTTP_REQUEST_POST)
+  {
+    printf("Received configuration data from user\r\n");
+    if (req->request_data_length == 0 || req->request_data_length >= CONFIG_REQUEST_BUFFER_SIZE)
+    {
+      http_response.response_code = SL_HTTP_RESPONSE_BAD_REQUEST;
+      sl_http_server_send_response(handle, &http_response);
+      return SL_STATUS_OK;
+    }
+
+    char *body_buffer = (char *)malloc(CONFIG_REQUEST_BUFFER_SIZE);
+    if (body_buffer == NULL)
+    {
+      http_response.response_code = SL_HTTP_RESPONSE_INTERNAL_SERVER_ERROR;
+      sl_http_server_send_response(handle, &http_response);
+      return SL_STATUS_OK;
+    }
+    memset(body_buffer, 0, CONFIG_REQUEST_BUFFER_SIZE);
+
+    sl_http_recv_req_data_t recv_data = {
+        .request = req,
+        .buffer = (uint8_t *)body_buffer,
+        .buffer_length = CONFIG_REQUEST_BUFFER_SIZE - 1,
+        .received_data_length = 0,
+    };
+
+    sl_status_t status = sl_http_server_read_request_data(handle, &recv_data);
+    if (status != SL_STATUS_OK)
+    {
+      free(body_buffer);
+      http_response.response_code = SL_HTTP_RESPONSE_INTERNAL_SERVER_ERROR;
+      sl_http_server_send_response(handle, &http_response);
+      return SL_STATUS_OK;
+    }
+
+    char temp[64];
+
+    if (extract_json_string(body_buffer, "ssid", temp, sizeof(temp)))
+    {
+      strncpy(pdata.wifi_client_profile_ssid, temp, sizeof(pdata.wifi_client_profile_ssid) - 1);
+    }
+    if (extract_json_string(body_buffer, "security_type", temp, sizeof(temp)))
+    {
+      strncpy(pdata.wifi_client_security_type, temp, sizeof(pdata.wifi_client_security_type));
+    }
+
+    if (extract_json_string(body_buffer, "passphrase", temp, sizeof(temp)))
+    {
+      strncpy(pdata.wifi_client_credential, temp, sizeof(pdata.wifi_client_credential));
+    }
+
+    if (extract_json_string(body_buffer, "server", temp, sizeof(temp)))
+    {
+      strncpy(pdata.mqtt_server_address, temp, sizeof(pdata.mqtt_server_address) - 1);
+    }
+    if (extract_json_string(body_buffer, "username", temp, sizeof(temp)))
+    {
+      strncpy(pdata.mqtt_client_username, temp, sizeof(pdata.mqtt_client_username) - 1);
+    }
+
+    // Only overwrite the stored MQTT password if the client actually sent a non-empty one
+    // — an empty field from the browser means "keep the current password".
+    char mqtt_password[64] = {0};
+    if (extract_json_string(body_buffer, "password", mqtt_password, sizeof(mqtt_password)) && strlen(mqtt_password) > 0)
+    {
+      strncpy(pdata.mqtt_client_password, mqtt_password, sizeof(pdata.mqtt_client_password) - 1);
+    }
+
+    free(body_buffer);
+
+    // TODO: kick off sl_wifi_connect / MQTT reconnect using g_device_config + passphrase here
+    // TODO: validate data. maybe in the fm_write_data function?
+    // fm_write_data(&pdata);
+    osDelay(500);
+    app_state = CONNECTING_STATE; // we're not actually connected here, just tell the state manager that we to force an exit
+
+    http_response.response_code = SL_HTTP_RESPONSE_OK;
+    http_response.content_type = SL_HTTP_CONTENT_TYPE_APPLICATION_JSON;
+    http_response.data = (uint8_t *)"{\"status\":\"ok\"}";
+    http_response.current_data_length = strlen("{\"status\":\"ok\"}");
+    http_response.expected_data_length = http_response.current_data_length;
+    sl_http_server_send_response(handle, &http_response);
+
+    return SL_STATUS_OK;
+  }
+  else
+  {
+    sl_http_server_send_response(handle, &http_response);
+    return SL_STATUS_OK;
+  }
+  return SL_STATUS_OK;
+}
+
+sl_status_t default_handler(sl_http_server_t *handle, sl_http_server_request_t *req)
 {
   sl_http_server_response_t http_response = DEFAULT_HTTP_RESPONSE_METHOD_NOT_ALLOWED;
   sl_http_header_t header                 = { .key = "Server", .value = "SI917-HTTPServer" };
@@ -810,6 +750,42 @@ static sl_status_t default_handler(sl_http_server_t *handle, sl_http_server_requ
   sl_http_server_send_response(handle, &http_response);
 
   return SL_STATUS_OK;
+}
+
+static bool extract_json_string(const char *json, const char *key, char *out, size_t out_size)
+{
+  char search_key[48];
+  snprintf(search_key, sizeof(search_key), "\"%s\"", key);
+
+  const char *key_pos = strstr(json, search_key);
+  if (key_pos == NULL) {
+    return false;
+  }
+
+  const char *colon = strchr(key_pos, ':');
+  if (colon == NULL) {
+    return false;
+  }
+
+  const char *value_start = strchr(colon, '\"');
+  if (value_start == NULL) {
+    return false;
+  }
+  value_start++; // skip opening quote
+
+  const char *value_end = strchr(value_start, '\"');
+  if (value_end == NULL) {
+    return false;
+  }
+
+  size_t value_len = (size_t)(value_end - value_start);
+  if (value_len >= out_size) {
+    value_len = out_size - 1;
+  }
+
+  memcpy(out, value_start, value_len);
+  out[value_len] = '\0';
+  return true;
 }
 
 static sl_wifi_security_t string_to_security_type(const char *security_type)
