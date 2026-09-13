@@ -119,21 +119,20 @@ app_init ()
 
   sl_gpio_set_configuration(sl_gpio_pin_config_49);
 
-  fm_nvm_init();
-
+  
   led_thread_id = osThreadNew ((osThreadFunc_t) led_thread, NULL,
-                                &led_thread_attributes);
-
+  &led_thread_attributes);
+  
   button_thread_id = osThreadNew ((osThreadFunc_t) button_thread, NULL,
-                                &button_thread_attributes);
-
+  &button_thread_attributes);
+  
   main_thread_id = osThreadNew ((osThreadFunc_t) fridge_monitor, NULL,
-                                  &main_thread_attr);
+  &main_thread_attr);
 }
 
 /***************************************************************************//**
- * App ticking function.
- ******************************************************************************/
+* App ticking function.
+******************************************************************************/
 
 void
 button_thread (void *argument)
@@ -148,55 +147,55 @@ button_thread (void *argument)
   uint8_t btn_state = 1U;
   uint8_t num_consecutive_press = 0U;
   uint8_t last_state = 1U;
-
+  
   const uint16_t SHORT_PRESS_DURATION_THRESHOLD = 20; // 2 seconds on time
   const uint16_t SHORT_RELEASE_DURATION_THRESHOLD = 20; //2 seconds off time
   const uint16_t DECISECOND_DELAY_VAL = 100;
   const uint16_t TIMEOUT_ACCESS_POINT_RESET = 30;
-
+  
   for(;;){
     btn_state = sl_gpio_get_pin_input(SL_SI91X_GPIO_49_PORT,SL_SI91X_GPIO_49_PIN);
     if(BUTTON_PRESSED == btn_state){ //pressed
-//        DEBUGOUT("Button pressed\n");
-        decisecond_on_counter++;
-
-        if(BUTTON_RELEASED == last_state){
-            if(SHORT_RELEASE_DURATION_THRESHOLD < decisecond_off_counter)
-              num_consecutive_press = 0;
-
-            decisecond_off_counter = 0;
-        }
-        last_state = btn_state;
+      //        DEBUGOUT("Button pressed\n");
+      decisecond_on_counter++;
+      
+      if(BUTTON_RELEASED == last_state){
+        if(SHORT_RELEASE_DURATION_THRESHOLD < decisecond_off_counter)
+        num_consecutive_press = 0;
+        
+        decisecond_off_counter = 0;
+      }
+      last_state = btn_state;
     }
     if(BUTTON_RELEASED == btn_state){
-//        DEBUGOUT("Button released\n");
-        decisecond_off_counter++;
-
-        if(BUTTON_PRESSED == last_state){
-          if(SHORT_PRESS_DURATION_THRESHOLD > decisecond_on_counter){
-              num_consecutive_press++;
-              DEBUGOUT("Presses: %d\n",num_consecutive_press);
-          }
-          decisecond_on_counter = 0;
+      //        DEBUGOUT("Button released\n");
+      decisecond_off_counter++;
+      
+      if(BUTTON_PRESSED == last_state){
+        if(SHORT_PRESS_DURATION_THRESHOLD > decisecond_on_counter){
+          num_consecutive_press++;
+          DEBUGOUT("Presses: %d\n",num_consecutive_press);
         }
-        last_state = btn_state;
-    }
-
-    if(num_consecutive_press > 4){
-        DEBUGOUT("Rquesting OTA Update...\n");
-        ESensorType_t msg = OTA_UPDATE;
-        osMessageQueuePut (queue_id, &msg, 0, osWaitForever);
-        num_consecutive_press = 0;
         decisecond_on_counter = 0;
+      }
+      last_state = btn_state;
+    }
+    
+    if(num_consecutive_press > 4){
+      DEBUGOUT("Rquesting OTA Update...\n");
+      ESensorType_t msg = OTA_UPDATE;
+      osMessageQueuePut (queue_id, &msg, 0, osWaitForever);
+      num_consecutive_press = 0;
+      decisecond_on_counter = 0;
     }
     if(TIMEOUT_ACCESS_POINT_RESET < decisecond_on_counter){
-        DEBUGOUT("Requesting WiFi reset... \n");
-        ESensorType_t msg = RESET_WIFI;
-        osMessageQueuePut (queue_id, &msg, 0, osWaitForever);
-        decisecond_on_counter = 0;
+      DEBUGOUT("Requesting WiFi reset... \n");
+      ESensorType_t msg = RESET_WIFI;
+      osMessageQueuePut (queue_id, &msg, 0, osWaitForever);
+      decisecond_on_counter = 0;
     }
-
-
+    
+    
     osDelay(DECISECOND_DELAY_VAL);
   }
 }
@@ -204,39 +203,39 @@ button_thread (void *argument)
 void
 led_thread(void *argument)
 {
-
+  
   sl_si91x_simple_rgb_led_init(&led_led0);
   sl_si91x_simple_rgb_led_on(&led_led0);
-
+  
   uint8_t led_cmd = LED_LAST;
   UNUSED_PARAMETER(argument);
   DEBUGOUT("Started LED Thread\r\n");
   for(;;) {
-      osMessageQueueGet(queue_led_id, &led_cmd, 0, 0);
-      int colour = 0xFF66FF; // default pink
-      int delay = 0;
-      switch (led_cmd) {
-        case LED_RED: colour = 0xFF3333;delay = 0;break;
-        case LED_RED_FLASH: colour = 0xFF3333;delay = 100;break;
-        case LED_CYAN: colour = 0x33FFFF;delay = 0;break;
-        case LED_CYAN_FLASH: colour = 0x33FFFF;delay = 100;break;
-        case LED_ORANGE: colour = 0xFF8000;delay = 0;break;
-        case LED_ORANGE_FLASH: colour = 0xFF8000;delay = 100;break;
-        case LED_PURPLE: colour = 0xB266FF;delay = 0;break;
-        case LED_PURPLE_FLASH: colour = 0xB266FF;delay = 100;break;
-        case LED_GREEN: colour = 0x00CC00;delay = 0;break;
-        case LED_GREEN_FLASH: colour = 0x00CC00;delay = 1000;break;
-        case LED_YELLOW: colour = 0xE5EB34;delay = 0;break;
-        case LED_YELLOW_FLASH: colour = 0xE5EB34;delay = 200;break;
-      }
-
-          sl_si91x_simple_rgb_led_set_colour(&led_led0, colour);
-          sl_si91x_simple_rgb_led_on(&led_led0);
-      if(delay > 0) {
-          osDelay(delay);
-          sl_si91x_simple_rgb_led_off(&led_led0);
-          osDelay(delay);
-      }
+    osMessageQueueGet(queue_led_id, &led_cmd, 0, 0);
+    int colour = 0xFF66FF; // default pink
+    int delay = 0;
+    switch (led_cmd) {
+      case LED_RED: colour = 0xFF3333;delay = 0;break;
+      case LED_RED_FLASH: colour = 0xFF3333;delay = 100;break;
+      case LED_CYAN: colour = 0x33FFFF;delay = 0;break;
+      case LED_CYAN_FLASH: colour = 0x33FFFF;delay = 100;break;
+      case LED_ORANGE: colour = 0xFF8000;delay = 0;break;
+      case LED_ORANGE_FLASH: colour = 0xFF8000;delay = 100;break;
+      case LED_PURPLE: colour = 0xB266FF;delay = 0;break;
+      case LED_PURPLE_FLASH: colour = 0xB266FF;delay = 100;break;
+      case LED_GREEN: colour = 0x00CC00;delay = 0;break;
+      case LED_GREEN_FLASH: colour = 0x00CC00;delay = 1000;break;
+      case LED_YELLOW: colour = 0xE5EB34;delay = 0;break;
+      case LED_YELLOW_FLASH: colour = 0xE5EB34;delay = 200;break;
+    }
+    
+    sl_si91x_simple_rgb_led_set_colour(&led_led0, colour);
+    sl_si91x_simple_rgb_led_on(&led_led0);
+    if(delay > 0) {
+      osDelay(delay);
+      sl_si91x_simple_rgb_led_off(&led_led0);
+      osDelay(delay);
+    }
   }
 }
 
@@ -278,7 +277,7 @@ void publish_all_sensor_data(sensors_t* data)
   sprintf(buf_data, "%0.3f", data->power);
   fm_comms_publish_data (buf_data,strlen (buf_data),"power",strlen ("power"), pdata.device_id, strlen(pdata.device_id));
   DEBUGOUT("%s: %s\r\n","power:", buf_data);
-
+  
 }
 
 int publish_sensor_data(ESensorType_t sensor_type, float value)
@@ -293,50 +292,50 @@ int publish_sensor_data(ESensorType_t sensor_type, float value)
   switch (sensor_type)
   {
     case THERMISTOR_1:
-      sprintf(buf_data, "%0.2f", value);
-      strcpy(buf_topic,"temperature1");
-      break;
+    sprintf(buf_data, "%0.2f", value);
+    strcpy(buf_topic,"temperature1");
+    break;
     case THERMISTOR_2:
-      sprintf(buf_data, "%0.2f", (value));
-      strcpy(buf_topic, "temperature2");
-      break;
+    sprintf(buf_data, "%0.2f", (value));
+    strcpy(buf_topic, "temperature2");
+    break;
     case THERMISTOR_3:
-      sprintf(buf_data, "%0.2f", (value));
-      strcpy(buf_topic, "temperature3");
-      break;
+    sprintf(buf_data, "%0.2f", (value));
+    strcpy(buf_topic, "temperature3");
+    break;
     case THERMISTOR_4:
-      sprintf(buf_data, "%0.2f", (value));
-      strcpy(buf_topic, "temperature4");
-      break;
+    sprintf(buf_data, "%0.2f", (value));
+    strcpy(buf_topic, "temperature4");
+    break;
     case PRESSURE_1:
-      strcpy(buf_topic, "pressure1");
-      break;
+    strcpy(buf_topic, "pressure1");
+    break;
     case PRESSURE_2:
-      sprintf(buf_data, "%0.2f", (value));
-      strcat(buf_topic, "pressure2");
-      break;
+    sprintf(buf_data, "%0.2f", (value));
+    strcat(buf_topic, "pressure2");
+    break;
     case POWER:
-      sprintf(buf_data, "%0.2f", (value));
-      strcpy(buf_topic, "power");
-      break;
+    sprintf(buf_data, "%0.2f", (value));
+    strcpy(buf_topic, "power");
+    break;
     default:
-      break;
+    break;
   }
   char buf[100] = {0};
   sprintf(buf,"%s/%s", pdata.device_id, buf_topic);
   DEBUGOUT("%s: %s\r\n",buf, buf_data);
-
+  
   fm_error_t status = fm_comms_publish_data (
-      buf_data,
-      strlen (buf_data),
-      buf_topic,
-      strlen (buf_topic),
-      pdata.device_id,
-      strlen(pdata.device_id)
+    buf_data,
+    strlen (buf_data),
+    buf_topic,
+    strlen (buf_topic),
+    pdata.device_id,
+    strlen(pdata.device_id)
   );
-
+  
   if(status != FM_SUCCESS){
-      return EXIT_FAILURE;
+    return EXIT_FAILURE;
   }
   return EXIT_SUCCESS;
 }
@@ -366,7 +365,7 @@ void printstate(E_FM_State_t const*const state){
     case NO_SETUP: printf("NO_SETUP"); break;
     case FM_ERROR: printf("FM_ERROR"); break;
     default:break;
-
+    
   }
 }
 
@@ -375,22 +374,26 @@ fridge_monitor (void *argument)
 {
   UNUSED_PARAMETER(argument);
   DEBUGOUT("Started Main Thread\r\n");
-
+  
   E_FM_State_t state = INITIALISING;
   E_FM_State_t last_state = state;
   uint8_t reconnect_countdown = 10;
-
+  
   uint8_t led_cmd = LED_LAST;
+  
   for(;;){
       if(state != FM_ERROR)
         last_state = state; // preserve last state for troubleshooting
       ESensorType_t msg;
       osMessageQueueGet(queue_id, &msg, 0, 0);
       if(msg == RESET_WIFI){
+        // TODO: rename ESensorType_t to be more general, or create a new message type for wifi commands
+          msg = NO_SENSOR;
           state = PROVISIONING;
       }
 
       if(msg == OTA_UPDATE){ // TODO: make new type for these command messages
+          msg = NO_SENSOR;
           state = OTA_FIRMWARE_UPDATE;
       }
 
@@ -398,8 +401,18 @@ fridge_monitor (void *argument)
         case INITIALISING:{
           led_cmd = LED_ORANGE_FLASH;
           fm_error_t status = FM_NOT_INITIALISED;
-          fm_read_data(&pdata);
+          
           status = fm_comms_init();
+          status = fm_nvm_init(); // must be called after wifi is initialised
+          status = fm_read_data(&pdata);
+
+          // If there the stored data is incomplete, start the access point for the user to do configuration
+          if(FM_NVM_EMPTY == status) {
+            state = PROVISIONING;
+            break;
+          }
+
+
           if(FM_SUCCESS == status){
               state = CONNECTING;
           }else{
@@ -469,6 +482,8 @@ fridge_monitor (void *argument)
           fm_comms_deint();
           fm_sensors_close();
           fm_ap_sel_start();
+
+          // TODO: pass the provisioning function a copy of the program data, and get the modified output. write it to nvm here instead of inside the function.
           state = INITIALISING;
           break;
         case RECONNECTING:
