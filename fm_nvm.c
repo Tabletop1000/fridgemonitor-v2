@@ -52,6 +52,15 @@ fm_error_t fm_read_data(program_data_t *data)
         printf("failed to read credentials from nvm: 0x%lx\r\n", nvm_status);
         return FM_NVM_ERROR;
     }
+    nvm_status = nvm3_readData(nvm3_defaultHandle,
+                               NVM3_KEY_SSID,
+                               &data->wifi_client_profile_ssid,
+                               sizeof(data->wifi_client_profile_ssid));
+    if (nvm_status != ECODE_NVM3_OK)
+    {
+        printf("failed to read SSID from nvm: 0x%lx\r\n", nvm_status);
+        return FM_NVM_ERROR;
+    }
     // Fetch the MQTT server address
     nvm_status = nvm3_readData(nvm3_defaultHandle,
                                NVM3_KEY_MQTT_ADDRESS,
@@ -107,22 +116,32 @@ fm_error_t fm_write_data(program_data_t * const data)
     nvm_status = nvm3_writeData(nvm3_defaultHandle, NVM3_KEY_WIFI_CREDENTIAL, &data->wifi_client_credential, sizeof(data->wifi_client_credential));
     if (nvm_status != ECODE_NVM3_OK)
     {
-        printf("failed to write profile from nvm: 0x%lx\r\n", nvm_status);
+        printf("failed to write wifi credential to nvm: 0x%lx\r\n", nvm_status);
+    }
+    nvm_status = nvm3_writeData(nvm3_defaultHandle, NVM3_KEY_SSID, &data->wifi_client_profile_ssid, sizeof(data->wifi_client_profile_ssid));
+    if (nvm_status != ECODE_NVM3_OK)
+    {
+        printf("failed to write wifi credential to nvm: 0x%lx\r\n", nvm_status);
     }
     nvm_status = nvm3_writeData(nvm3_defaultHandle, NVM3_KEY_MQTT_ADDRESS, data->mqtt_server_address, sizeof(data->mqtt_server_address));
     if (nvm_status != ECODE_NVM3_OK)
     {
-        printf("failed to write mqtt broker IP nvm: 0x%lx\r\n", nvm_status);
+        printf("failed to write mqtt broker IP to nvm: 0x%lx\r\n", nvm_status);
     }
     nvm_status = nvm3_writeData(nvm3_defaultHandle, NVM3_KEY_MQTT_USERNAME, data->mqtt_client_username, sizeof(data->mqtt_client_username));
     if (nvm_status != ECODE_NVM3_OK)
     {
-        printf("failed to write mqtt username nvm: 0x%lx\r\n", nvm_status);
+        printf("failed to write mqtt username to nvm: 0x%lx\r\n", nvm_status);
     }
     nvm_status = nvm3_writeData(nvm3_defaultHandle, NVM3_KEY_MQTT_PASSWORD, data->mqtt_client_password, sizeof(data->mqtt_client_password));
     if (nvm_status != ECODE_NVM3_OK)
     {
-        printf("failed to write mqtt password nvm: 0x%lx\r\n", nvm_status);
+        printf("failed to write mqtt password to nvm: 0x%lx\r\n", nvm_status);
+    }
+    nvm_status = nvm3_writeData(nvm3_defaultHandle, NVM3_KEY_DEVICE_ID, data->device_id, sizeof(data->device_id));
+    if (nvm_status != ECODE_NVM3_OK)
+    {
+        printf("failed to write device-id password to nvm: 0x%lx\r\n", nvm_status);
     }
     return FM_SUCCESS;
 }
