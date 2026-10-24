@@ -82,6 +82,13 @@ uint8_t check_power_two(uint16_t num)
 ```
 
 
+## Updating the web interface
+Make changes to `resource/wifi_provisioning.html`.
+Convert it to a binary file with the command
+` xxd -i .\resources\wifi_provisioning.html > resources\dashboard2.h`
+Make sure it is saved with LF teminators in UTF-8.
+Delete the "resource_" prefix in the defines.
+
 
 ### Hardware Requirements
 
