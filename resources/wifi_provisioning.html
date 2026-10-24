@@ -12,10 +12,10 @@ padding: 0;
 display: flex;
 justify-content: center;
 align-items: center;
-height: 100vh;
+min-height: 100vh;
 background-color: #f0f0f0;
 }
-#scan-form {
+#config-form {
 text-align: center;
 padding: 20px;
 border: 1px solid #ccc;
@@ -23,7 +23,8 @@ border-radius: 8px;
 background-color: #fff;
 width: 400px;
 }
-input[type="submit"] {
+input[type="submit"],
+input[type="button"] {
 width: 100%;
 padding: 10px;
 margin: 10px 0;
@@ -33,16 +34,8 @@ background-color: #007bff;
 color: #fff;
 cursor: pointer;
 }
-input[type="button"] {
+#scan-button {
 background-color: #0056b3;
-width: 100%;
-padding: 10px;
-margin: 10px 0;
-border: none;
-border-radius: 5px;
-background-color: #007bff;
-color: #fff;
-cursor: pointer;
 }
 #heading {
 margin-bottom: 20px;
@@ -69,37 +62,51 @@ border-radius: 4px;
 }
 #scan-results {
     text-align: center;
-    padding: 20px;
+    margin-top: 10px;
+}
+#scan-results table {
+    width: 100%;
+    border-collapse: collapse;
+}
+#scan-results th, #scan-results td {
     border: 1px solid #ccc;
-    border-radius: 8px;
-    background-color: #fff;
-    margin-top: 20px;
+    padding: 8px;
 }
-#connect-button {
-    margin-top: 20px;
+#scan-results tr[data-ssid] {
+    cursor: pointer;
 }
-#password-input {
-    width: 93%;
-    padding: 10px;
-    margin: 10px 0;
-    border: 1px solid #ccc;
-    border-radius: 5px;
-    font-size: 16px;
+#scan-results tr[data-ssid]:hover {
+    background-color: #f5f8ff;
 }
-.mqtt-section {
+.section-title {
     margin-top: 20px;
-    padding-top: 20px;
+    padding-top: 15px;
     border-top: 1px dashed #ccc;
+    text-align: left;
+    font-size: 15px;
+    color: #333;
+}
+#status-message {
+    margin-top: 15px;
+    font-size: 14px;
+    color: #333;
 }
 </style>
 </head>
 <body>
-<form id="scan-form" action="/scan" method="get">
+
+<form id="config-form">
 <h3 id="heading">Fridge Monitor WiFi setup</h3>
-<input type="submit" value="Scan">
+
+<input type="button" value="Scan for networks" id="scan-button">
 <div id="scan-results"></div>
 
 <div class="form-row" style="margin-top: 20px;">
+    <label for="ssid-input">SSID:</label>
+    <input type="text" id="ssid-input" placeholder="Network name" autocomplete="off">
+</div>
+
+<div class="form-row">
     <label for="security-type">Security Type:</label>
     <select id="security-type">
         <option value="">Auto (From Scan)</option>
@@ -111,11 +118,13 @@ border-radius: 4px;
     </select>
 </div>
 
-<input type="password" placeholder="Enter WiFi password" id="password-input">
-<input type="submit" value="Connect" id="connect-button">
-  
+<div class="form-row">
+    <label for="password-input">WiFi Password:</label>
+    <input type="password" id="password-input" placeholder="Leave blank to keep current" autocomplete="off">
+</div>
+
 <div class="mqtt-section">
-    <h3>MQTT Server Configuration</h3>
+    <h4 class="section-title">MQTT Server Configuration</h4>
     <div class="form-row">
         <label for="mqtt-server">Server Address:</label>
         <input type="text" id="mqtt-server" placeholder="mqtt.example.com">
@@ -126,203 +135,149 @@ border-radius: 4px;
     </div>
     <div class="form-row">
         <label for="mqtt-password">Password:</label>
-        <input type="password" id="mqtt-password" placeholder="MQTT password">
+        <input type="password" id="mqtt-password" placeholder="Leave blank to keep current" autocomplete="off">
     </div>
-  <input type="button" value="Apply MQTT Settings" id="apply-mqtt-button">
 </div>
+
+<div class="device-information-section">
+    <h4 class="section-title">Device Information</h4>
+    <div class="form-row">
+        <label for="device-id">Device ID:</label>
+        <input type="text" id="device-id" placeholder="Example refridgeration unit">
+    </div>
+</div>
+<input type="submit" value="Save Configuration" id="save-button">
+<div id="status-message"></div>
 </form>
-  
+
 <script>
- document.getElementById('scan-form').addEventListener('submit', function (event) {
-    event.preventDefault();
+// ---------------------------------------------------------------------
+// Load current device configuration from the backend and pre-populate
+// the form. Expects the device to serve a JSON object at GET /config,
+// e.g.:
+// {
+//   "ssid": "MyHomeWifi",
+//   "security_type": "WPA2",
+//   "mqtt_server": "mqtt.example.com",
+//   "mqtt_username": "fridge01"
+// }
+// Note: password fields are intentionally NOT pre-filled. The device
+// should not send stored secrets back to the browser; instead, an
+// empty password field means "keep the current password unchanged".
+// ---------------------------------------------------------------------
+function loadCurrentConfig() {
     var xhr = new XMLHttpRequest();
-    xhr.open('GET', '/scan', true);
-    xhr.setRequestHeader('Content-Type', 'application/json');
-    xhr.onload = function() {
+    xhr.open('GET', '/config', true);
+    xhr.onload = function () {
         if (xhr.status === 200) {
-            var scanResults = JSON.parse(xhr.responseText);
-            var scanResultsTable = document.createElement('table');
-            scanResultsTable.style.borderCollapse = "collapse";
-            scanResultsTable.style.width = "100%";
-
-            // Clear existing table
-            document.getElementById('scan-results').innerHTML = "";
-
-            // Create table header
-            var tableHeader = document.createElement('tr');
-            var headerColumns = ["Select", "SSID", "Security Type", "Channel", "RSSI"];
-            headerColumns.forEach(function(column) {
-                var th = document.createElement('th');
-                th.textContent = column;
-                th.style.border = "1px solid #ccc";
-                th.style.padding = "8px";
-                th.style.backgroundColor = "#f0f0f0";
-                tableHeader.appendChild(th);
-            });
-            scanResultsTable.appendChild(tableHeader);
-
-            // Create table rows
-            scanResults.scan_results.forEach(function(result) {
-                var tableRow = document.createElement('tr');
-
-                // Add select radio button
-                var selectRadio = document.createElement('input');
-                selectRadio.type = "radio";
-                selectRadio.name = "selectedSSID";
-                selectRadio.value = result.ssid;
-                var selectRadioCell = document.createElement('td');
-                selectRadioCell.appendChild(selectRadio);
-                selectRadioCell.style.border = "1px solid #ccc";
-                tableRow.appendChild(selectRadioCell);
-
-                var rowData = [result.ssid, result.security_type, result.channel, result.rssi];
-                rowData.forEach(function(data, index) {
-                    var td = document.createElement('td');
-                    td.textContent = data;
-                    td.style.border = "1px solid #ccc";
-                    td.style.padding = "8px";
-                    tableRow.appendChild(td);
-                });
-
-                scanResultsTable.appendChild(tableRow);
-            });
-
-            // Clear existing scan-results div
-            var scanResultsDiv = document.getElementById('scan-results');
-            scanResultsDiv.innerHTML = "";
-
-            // Append the table to the scan-results div
-            scanResultsDiv.appendChild(scanResultsTable);
-        }
-    };
-    xhr.send();
-});
-
-document.getElementById('scan-form').addEventListener('submit', function (event) {
-    event.preventDefault();
-    var xhr = new XMLHttpRequest();
-    xhr.open('GET', '/scan', true);
-    xhr.setRequestHeader('Content-Type', 'application/json');
-    xhr.onload = function() {
-        if (xhr.status === 200) {
-            var scanResults = JSON.parse(xhr.responseText);
-            var scanResultsTable = document.createElement('table');
-            scanResultsTable.style.borderCollapse = "collapse";
-            scanResultsTable.style.width = "100%";
-
-            document.getElementById('scan-results').innerHTML = "";
-
-            var tableHeader = document.createElement('tr');
-            var headerColumns = ["Select", "SSID", "Security Type", "Channel", "RSSI"];
-            headerColumns.forEach(function(column) {
-                var th = document.createElement('th');
-                th.textContent = column;
-                th.style.border = "1px solid #ccc";
-                th.style.padding = "8px";
-                th.style.backgroundColor = "#f0f0f0";
-                tableHeader.appendChild(th);
-            });
-            scanResultsTable.appendChild(tableHeader);
-
-            scanResults.scan_results.forEach(function(result) {
-                var tableRow = document.createElement('tr');
-
-                var selectRadio = document.createElement('input');
-                selectRadio.type = "radio";
-                selectRadio.name = "selectedSSID";
-                selectRadio.value = result.ssid;
-                var selectRadioCell = document.createElement('td');
-                selectRadioCell.appendChild(selectRadio);
-                selectRadioCell.style.border = "1px solid #ccc";
-                tableRow.appendChild(selectRadioCell);
-
-                var rowData = [result.ssid, result.security_type, result.channel, result.rssi];
-                rowData.forEach(function(data, index) {
-                    var td = document.createElement('td');
-                    td.textContent = data;
-                    td.style.border = "1px solid #ccc";
-                    td.style.padding = "8px";
-                    tableRow.appendChild(td);
-                });
-
-                scanResultsTable.appendChild(tableRow);
-            });
-
-            var scanResultsDiv = document.getElementById('scan-results');
-            scanResultsDiv.innerHTML = "";
-            scanResultsDiv.appendChild(scanResultsTable);
-        }
-    };
-    xhr.send();
-});
-
-document.getElementById('connect-button').addEventListener('click', function (event) {
-    event.preventDefault();
-    var selectedSSID = document.querySelector('input[name="selectedSSID"]:checked');
-    if (selectedSSID) {
-        var ssid = selectedSSID.value;
-        var password = document.getElementById('password-input').value;
-        
-        // Priority: Use dropdown selection if manual, else use table value
-        var manualSecurity = document.getElementById('security-type').value;
-        var securityType = manualSecurity !== "" ? manualSecurity : selectedSSID.parentElement.nextElementSibling.nextElementSibling.textContent;
-        
-        var mqttServer = document.getElementById('mqtt-server').value;
-        var mqttUsername = document.getElementById('mqtt-username').value;
-        var mqttPassword = document.getElementById('mqtt-password').value;
-        
-        var xhr = new XMLHttpRequest();
-        xhr.open('POST', '/connect', true);
-        xhr.setRequestHeader('Content-Type', 'application/json');
-        var data = {
-            ssid: ssid,
-            passphrase: password,
-            security_type: securityType,
-            mqtt: {
-                server: mqttServer,
-                username: mqttUsername,
-                password: mqttPassword
+            try {
+                var cfg = JSON.parse(xhr.responseText);
+                if (cfg.ssid) document.getElementById('ssid-input').value = cfg.ssid;
+                if (cfg.security_type) document.getElementById('security-type').value = cfg.security_type;
+                if (cfg.mqtt_server) document.getElementById('mqtt-server').value = cfg.mqtt_server;
+                if (cfg.mqtt_username) document.getElementById('mqtt-username').value = cfg.mqtt_username;
+                if (cfg.device_id) document.getElementById('device-id').value = cfg.device_id;
+            } catch (e) {
+                console.error('Failed to parse /config response', e);
             }
-        };
-        xhr.send(JSON.stringify(data));
-        document.getElementById('scan-form').style.display = 'none';
-        document.getElementById('scan-results').innerHTML = 'Connecting ...';
-    } else {
-        alert('Please select a network to connect.');
-    }
+        }
+    };
+    xhr.send();
+}
+
+window.addEventListener('DOMContentLoaded', loadCurrentConfig);
+
+// ---------------------------------------------------------------------
+// Scan button: fetch nearby networks and render a clickable table.
+// Clicking a row fills in the SSID + security type fields above,
+// it does not submit anything on its own.
+// ---------------------------------------------------------------------
+document.getElementById('scan-button').addEventListener('click', function () {
+    var xhr = new XMLHttpRequest();
+    xhr.open('GET', '/scan', true);
+    xhr.onload = function () {
+        if (xhr.status === 200) {
+            var scanResults = JSON.parse(xhr.responseText);
+            var scanResultsDiv = document.getElementById('scan-results');
+            scanResultsDiv.innerHTML = '';
+
+            var table = document.createElement('table');
+
+            var headerRow = document.createElement('tr');
+            ['SSID', 'Security Type', 'Channel', 'RSSI'].forEach(function (col) {
+                var th = document.createElement('th');
+                th.textContent = col;
+                headerRow.appendChild(th);
+            });
+            table.appendChild(headerRow);
+
+            scanResults.scan_results.forEach(function (result) {
+                var row = document.createElement('tr');
+                row.dataset.ssid = result.ssid;
+                row.dataset.security = result.security_type;
+
+                [result.ssid, result.security_type, result.channel, result.rssi].forEach(function (val) {
+                    var td = document.createElement('td');
+                    td.textContent = val;
+                    row.appendChild(td);
+                });
+
+                row.addEventListener('click', function () {
+                    document.getElementById('ssid-input').value = row.dataset.ssid;
+                    document.getElementById('security-type').value = row.dataset.security;
+                });
+
+                table.appendChild(row);
+            });
+
+            scanResultsDiv.appendChild(table);
+        }
+    };
+    xhr.send();
 });
 
-document.getElementById('apply-mqtt-button').addEventListener('click', function (event) {
-    var mqttServer = document.getElementById('mqtt-server').value;
-    var mqttUsername = document.getElementById('mqtt-username').value;
-    var mqttPassword = document.getElementById('mqtt-password').value;
+// ---------------------------------------------------------------------
+// Single submit: gather every field and send them all in one request.
+// ---------------------------------------------------------------------
+document.getElementById('config-form').addEventListener('submit', function (event) {
+    event.preventDefault();
 
-    if (!mqttServer) {
-        alert('Please enter a server address.');
+    var ssid = document.getElementById('ssid-input').value.trim();
+    if (!ssid) {
+        alert('Please enter or select a network SSID.');
         return;
     }
 
-    var xhr = new XMLHttpRequest();
-    xhr.open('POST', '/mqtt', true); // You can change this endpoint as needed
-    xhr.setRequestHeader('Content-Type', 'application/json');
-    
     var data = {
-        server: mqttServer,
-        username: mqttUsername,
-        password: mqttPassword
+        ssid: ssid,
+        security_type: document.getElementById('security-type').value,
+        passphrase: document.getElementById('password-input').value,
+        mqtt: {
+            server: document.getElementById('mqtt-server').value,
+            username: document.getElementById('mqtt-username').value,
+            password: document.getElementById('mqtt-password').value
+        },
+        device_id: document.getElementById('device-id').value
     };
 
-    xhr.onload = function() {
+    var statusDiv = document.getElementById('status-message');
+    statusDiv.textContent = 'Saving...';
+
+    var xhr = new XMLHttpRequest();
+    xhr.open('POST', '/config', true);
+    xhr.setRequestHeader('Content-Type', 'application/json');
+    xhr.onload = function () {
         if (xhr.status === 200) {
-            alert('MQTT Settings Applied!');
+            statusDiv.textContent = 'Configuration saved. Connecting...';
         } else {
-            alert('Error saving settings.');
+            statusDiv.textContent = 'Error saving configuration.';
         }
     };
-
+    xhr.onerror = function () {
+        statusDiv.textContent = 'Error saving configuration.';
+    };
     xhr.send(JSON.stringify(data));
 });
 </script>
 </body>
 </html>
-
