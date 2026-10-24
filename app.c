@@ -252,31 +252,31 @@ void publish_all_sensor_data(sensors_t* data)
   
   sprintf(buf_data, "%0.3f", data->thermistor_1);
   fm_comms_publish_data (buf_data,strlen (buf_data),"temperature1",strlen ("temperature1"), pdata.device_id, strlen(pdata.device_id));
-  DEBUGOUT("%s: %s\r\n","temperature1:", buf_data);
+  DEBUGOUT("%s: %s\r\n","temperature1", buf_data);
   
   sprintf(buf_data, "%0.3f", data->thermistor_2);
   fm_comms_publish_data (buf_data,strlen (buf_data),"temperature2",strlen ("temperature2"), pdata.device_id, strlen(pdata.device_id));
-  DEBUGOUT("%s: %s\r\n","temperature2:", buf_data);
+  DEBUGOUT("%s: %s\r\n","temperature2", buf_data);
   
   sprintf(buf_data, "%0.3f", data->thermistor_3);
   fm_comms_publish_data (buf_data,strlen (buf_data),"temperature3",strlen ("temperature3"), pdata.device_id, strlen(pdata.device_id));
-  DEBUGOUT("%s: %s\r\n","temperature3:", buf_data);
+  DEBUGOUT("%s: %s\r\n","temperature3", buf_data);
   
   sprintf(buf_data, "%0.3f", data->thermistor_4);
   fm_comms_publish_data (buf_data,strlen (buf_data),"temperature4",strlen ("temperature4"), pdata.device_id, strlen(pdata.device_id));
-  DEBUGOUT("%s: %s\r\n","temperature4:", buf_data);
+  DEBUGOUT("%s: %s\r\n","temperature4", buf_data);
   
   sprintf(buf_data, "%0.3f", data->pressure_1);
   fm_comms_publish_data (buf_data,strlen (buf_data),"pressure1",strlen ("pressure1"), pdata.device_id, strlen(pdata.device_id));
-  DEBUGOUT("%s: %s\r\n","pressure1:", buf_data);
+  DEBUGOUT("%s: %s\r\n","pressure1", buf_data);
   
   sprintf(buf_data, "%0.3f", data->pressure_2);
   fm_comms_publish_data (buf_data,strlen (buf_data),"pressure2",strlen ("pressure2"), pdata.device_id, strlen(pdata.device_id));
-  DEBUGOUT("%s: %s\r\n","pressure2:", buf_data);
+  DEBUGOUT("%s: %s\r\n","pressure2", buf_data);
   
   sprintf(buf_data, "%0.3f", data->power);
   fm_comms_publish_data (buf_data,strlen (buf_data),"power",strlen ("power"), pdata.device_id, strlen(pdata.device_id));
-  DEBUGOUT("%s: %s\r\n","power:", buf_data);
+  DEBUGOUT("%s: %s\r\n","power", buf_data);
   
 }
 

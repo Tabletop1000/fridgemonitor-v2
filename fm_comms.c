@@ -410,6 +410,22 @@ fm_error_t fm_comms_publish_data(const char * data, size_t len,
 
 fm_error_t fm_comms_mqtt_start()
 {
+
+  // Set the mqtt ID per the stored user settings. client_id is a pointer, so
+  // point it at pdata.device_id rather than copying over the CLIENT_ID literal.
+  pdata.device_id[sizeof(pdata.device_id) - 1] = '\0';
+  size_t device_id_len = strlen(pdata.device_id);
+  if (device_id_len > 0) {
+      mqtt_client_configuration.client_id = (uint8_t *)pdata.device_id;
+      mqtt_client_configuration.client_id_length = device_id_len;
+  } else {
+      mqtt_client_configuration.client_id = (uint8_t *)CLIENT_ID;
+      mqtt_client_configuration.client_id_length = strlen(CLIENT_ID);
+  }
+  printf("MQTT client ID: %.*s\r\n",
+         (int)mqtt_client_configuration.client_id_length,
+         (const char *)mqtt_client_configuration.client_id);
+
   // Only attempt MQTT connection if WiFi is active
   if(1U != fm_is_wifi_connected()){
       printf("Aborting MQTT connection. WiFi not found\r\n");

@@ -93,12 +93,12 @@ fm_error_t fm_read_data(program_data_t *data)
     }
     // Fetch the device ID
     nvm_status = nvm3_readData(nvm3_defaultHandle,
-                               NVM3_KEY_MQTT_PASSWORD,
-                               data->mqtt_client_password,
-                               sizeof(data->mqtt_client_password));
+                               NVM3_KEY_DEVICE_ID,
+                               data->device_id,
+                               sizeof(data->device_id));
     if (nvm_status != ECODE_NVM3_OK)
     {
-        printf("failed to mqtt password from nvm: 0x%lx\r\n", nvm_status);
+        printf("failed to read device ID from nvm: 0x%lx\r\n", nvm_status);
         return FM_NVM_ERROR;
     }
     return FM_SUCCESS;
