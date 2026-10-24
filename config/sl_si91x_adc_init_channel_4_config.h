@@ -52,7 +52,7 @@ extern "C" {
 
 // <o SL_ADC_CHANNEL_4_SAMPLE_LENGTH> Sample Length <1-1023>
 // <i> Default: 1023
-#define SL_ADC_CHANNEL_4_SAMPLE_LENGTH 1
+#define SL_ADC_CHANNEL_4_SAMPLE_LENGTH 100
 
 // </h>
 // <<< end of configuration section >>>

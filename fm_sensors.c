@@ -27,24 +27,35 @@
 #define PS4_SOC_FREQ          180000000  /*<! PLL out clock 180MHz            */
 #define SOC_PLL_REF_FREQUENCY 40000000   /*<! PLL input REFERENCE clock 40MHZ */
 #define DVISION_FACTOR        0          // Division factor
-#define CHANNEL_SAMPLE_LENGTH 1     // Number of ADC sample collect for operation
+#define CHANNEL_SAMPLE_LENGTH 100        // Number of ADC samples per channel per FIFO buffer, must match SL_ADC_CHANNEL_x_SAMPLE_LENGTH
 #define ADC_MAX_OP_VALUE      4095       // Maximum unsigned 12-bit ADC value
 #define ADC_MAX_OP_VALUE_SIGNED 2047     // Maximum signed 12-bit ADC magnitude
 #define ADC_DATA_CLEAR        0xF7FF     // Clear the data if 12th bit is enabled (1111 0111 1111 1111)
 #define VREF_VALUE            3.3        // reference voltage
-
-#define ADC_PING_BUFFER_1     0x000A0000 // Start address of Ping for channel_0
-#define ADC_PING_BUFFER_2     0x000B0000 // Start address of Ping for channel_1
-#define ADC_PING_BUFFER_3     0x000C0000 // Start address of Ping for channel_2
-#define ADC_PING_BUFFER_4     0x000D0000 // Start address of Ping for channel_3
-#define ADC_PING_BUFFER_5     0x000E0000 // Start address of Ping for channel_4
-#define ADC_PING_BUFFER_6     0x000F0000 // Start address of Ping for channel_5
-#define ADC_PING_BUFFER_7     0x00100000 // Start address of Ping for channel_6
+#define ADC_READ_TIMEOUT_MS   500        // Max time to wait for a fresh FIFO buffer on every channel
+#define ADC_READ_POLL_MS      5          // Poll interval while waiting for FIFO buffers
+#define ADC_ALL_CHANNELS_MASK ((1UL << NUMBER_OF_CHANNEL) - 1)
+#define ADC_BUFFER_PING       1          // RSI_ADC_ReadData ping_pong argument: read ping buffer
+#define ADC_BUFFER_PONG       0          // RSI_ADC_ReadData ping_pong argument: read pong buffer
 
 /******* LOCAL VARIABLES   *********/
 static float vref_value = (float)VREF_VALUE;
 static int16_t adc_output[NUMBER_OF_CHANNEL][CHANNEL_SAMPLE_LENGTH];
-static boolean_t adc_sample_ready = false;
+
+// ADC internal DMA ping/pong memory, one region per channel. The driver lays
+// the ping buffer out at chnl_ping_address and the pong buffer directly after
+// it (chnl_ping_address + 2 * num_of_samples bytes), so each channel needs
+// room for 2 * CHANNEL_SAMPLE_LENGTH samples. Keeping this as a static buffer
+// (instead of a fixed address as in the Silabs example) keeps the linker from
+// placing other data on top of it.
+static int16_t adc_ping_pong_mem[NUMBER_OF_CHANNEL][2 * CHANNEL_SAMPLE_LENGTH] __attribute__((aligned(4)));
+
+// Set from the ADC IRQ: bit n is set once channel n has filled a ping or pong buffer.
+static volatile uint32_t adc_buffer_ready_mask = 0;
+// Which buffer each channel filled most recently (ADC_BUFFER_PING = ping, ADC_BUFFER_PONG = pong).
+static volatile uint8_t adc_last_filled[NUMBER_OF_CHANNEL];
+// Which buffer each channel fills next. The hardware always starts with ping.
+static uint8_t adc_next_fill[NUMBER_OF_CHANNEL];
 
 static fm_thermistor_handle thermistor_ctx;
 static fm_pressure_handle pressure_ctx;
@@ -53,14 +64,16 @@ static sensors_t _sensors; // struct representing the latest sensor values, upda
 
 static void callback_event(uint8_t event_channel, uint8_t event);
 
-// The Silabs ADC initialization path requires an event callback to be
-// registered. When the application uses synchronous read operations and
-// does not rely on ADC event callbacks, this stub preserves the required
-// callback registration without performing any action.
+// Called from the ADC IRQ each time a channel fills its ping or pong buffer.
+// The ADC keeps sampling in FIFO mode, alternating ping then pong.
 static void callback_event(uint8_t event_channel, uint8_t event)
 {
-  (void)event_channel;
-  (void)event;
+  if ((event == SL_INTERNAL_DMA) && (event_channel < NUMBER_OF_CHANNEL)) {
+    adc_last_filled[event_channel] = adc_next_fill[event_channel];
+    adc_next_fill[event_channel] =
+      (adc_next_fill[event_channel] == ADC_BUFFER_PING) ? ADC_BUFFER_PONG : ADC_BUFFER_PING;
+    adc_buffer_ready_mask |= (1UL << event_channel);
+  }
 }
 
 // Function to find the nearest value in the second column and return the corresponding first column value
@@ -181,19 +194,33 @@ void fm_sensors_init()
   pressure_ctx->voltage_min_v = 0.0f;
 
   sl_adc_version_t version;
-  sl_status_t status;
+  sl_status_t status = SL_STATUS_OK;
 
   DEBUGOUT("Clock configuration is successful \n");
 
   for (int i = 0; i < NUMBER_OF_CHANNEL; i ++) {
     sl_adc_channel_config.rx_buf[i] =
       adc_output[i]; // Use a distinct receive buffer for each ADC channel.
-    // sl_adc_channel_config.chnl_ping_address[i] = ping_pong_addr_list[i]; // ADC ping address 
-    // sl_adc_channel_config.chnl_pong_address[i] = ping_pong_addr_list[i]
-    //   + (sl_adc_channel_config.num_of_samples[i]); // ADC pong address
+    sl_adc_channel_config.chnl_ping_address[i] = (uint32_t)adc_ping_pong_mem[i]; // ADC ping address
+    sl_adc_channel_config.chnl_pong_address[i] = (uint32_t)adc_ping_pong_mem[i]
+      + (sl_adc_channel_config.num_of_samples[i]); // ADC pong address
+    adc_next_fill[i] = ADC_BUFFER_PING;
+    adc_last_filled[i] = ADC_BUFFER_PING;
   }
+  adc_buffer_ready_mask = 0;
 
   do {
+    for (int i = 0; i < NUMBER_OF_CHANNEL; i++) {
+      if (sl_adc_channel_config.num_of_samples[i] != CHANNEL_SAMPLE_LENGTH) {
+        DEBUGOUT("ADC channel_%d sample length %d does not match CHANNEL_SAMPLE_LENGTH %d\n",
+                 i, sl_adc_channel_config.num_of_samples[i], CHANNEL_SAMPLE_LENGTH);
+        status = SL_STATUS_INVALID_CONFIGURATION;
+      }
+    }
+    if (status == SL_STATUS_INVALID_CONFIGURATION) {
+      break;
+    }
+
     // Version information of ADC driver
     version = sl_si91x_adc_get_version();
     DEBUGOUT("ADC version is fetched successfully \n");
@@ -227,47 +254,75 @@ void fm_sensors_init()
       DEBUGOUT("sl_si91x_adc_start: Error Code : %lu \n", status);
       break;
     }
-
-    for(int i = 0; i < NUMBER_OF_CHANNEL; i++){
-      sl_si91x_adc_disable_ping_pong(i);
-    }
     DEBUGOUT("Sensors initialised\n");
   } while (false);
 }
 
 void fm_read_all_sensors(void)
 {
-  sl_status_t status;
   float vout[NUMBER_OF_CHANNEL]              = {0.0f};
-  uint16_t adc_output_static = 0;
+  float vout_rms[NUMBER_OF_CHANNEL]          = {0.0f};
+  uint32_t waited_ms = 0;
 
-  // here we get the 12-bit value of ADC output in equivalent voltage.
-  sl_adc_channel_config.channel = SL_ADC_CHANNEL_1;
-  for(int i = 0; i  < NUMBER_OF_CHANNEL; i++){
-    // if (adc_sample_ready == true) {
-      adc_sample_ready = false;
-      int channel_read = sl_adc_channel_config.channel;
-      status = sl_si91x_adc_read_data_static_v2(&sl_adc_channel_config, sl_adc_config, &adc_output_static);
-      if (status != SL_STATUS_OK) {
-        DEBUGOUT("sl_si91x_adc_read_data: Error Code : %lu \n", status);
-      }
-      adc_output[channel_read][0] = (int16_t)adc_output_static;
-      if (adc_output[channel_read][0] & SIGN_BIT) {
-        adc_output[channel_read][0] = (int16_t)(adc_output[channel_read][0] & (ADC_DATA_CLEAR));
+  // Discard buffers completed before this call and wait until every channel
+  // has filled a fresh ping or pong buffer of CHANNEL_SAMPLE_LENGTH samples.
+  adc_buffer_ready_mask = 0;
+  while (((adc_buffer_ready_mask & ADC_ALL_CHANNELS_MASK) != ADC_ALL_CHANNELS_MASK)
+         && (waited_ms < ADC_READ_TIMEOUT_MS)) {
+    osDelay(ADC_READ_POLL_MS);
+    waited_ms += ADC_READ_POLL_MS;
+  }
+  uint32_t ready_mask = adc_buffer_ready_mask;
+
+  for (uint8_t ch = 0; ch < NUMBER_OF_CHANNEL; ch++) {
+    if (!(ready_mask & (1UL << ch))) {
+      DEBUGOUT("ADC channel_%d: no FIFO data after %lu ms\n", ch, waited_ms);
+      continue;
+    }
+    // Read the most recently completed buffer. The ADC keeps filling the other
+    // one, so this buffer is stable for another CHANNEL_SAMPLE_LENGTH samples.
+    // RSI_ADC_ReadData is used rather than sl_si91x_adc_read_data because the
+    // latter tracks ping/pong per read rather than per completed buffer, and
+    // only for channels 0-3.
+    rsi_error_t error_status = RSI_ADC_ReadData(adc_output[ch],
+                                                adc_last_filled[ch],
+                                                ch,
+                                                1, // apply gain and offset calibration
+                                                sl_adc_channel_config.input_type[ch]);
+    if (error_status != RSI_OK) {
+      DEBUGOUT("RSI_ADC_ReadData: channel_%d Error Code : %d \n", ch, error_status);
+      continue;
+    }
+
+    float vsum = 0.0f;
+    float vsum_sqrs = 0.0f;
+    for (uint32_t i = 0; i < CHANNEL_SAMPLE_LENGTH; i++) {
+      /* In two's complement format, the MSb (11th bit) of the conversion result determines the polarity,
+         when the MSb = '0', the result is positive, and when the MSb = '1', the result is negative */
+      if (adc_output[ch][i] & SIGN_BIT) {
+        adc_output[ch][i] = (int16_t)(adc_output[ch][i] & (ADC_DATA_CLEAR));
       } else { // set the MSb bit.
-        adc_output[channel_read][0] = adc_output[channel_read][0] | SIGN_BIT;
+        adc_output[ch][i] = adc_output[ch][i] | SIGN_BIT;
       }
-      vout[channel_read] = (((float)adc_output[channel_read][0] / (float)ADC_MAX_OP_VALUE) * vref_value);
+      float v = (((float)adc_output[ch][i] / (float)ADC_MAX_OP_VALUE) * vref_value);
+      // For differential type it will give vout.
+      if (sl_adc_channel_config.input_type[ch]) {
+        v = v - (vref_value / 2);
+      }
+      vsum += v;
+      vsum_sqrs += v*v;
+    }
+    vout[ch] = vsum / (float)CHANNEL_SAMPLE_LENGTH;
+    vout_rms[ch] = sqrt(vsum_sqrs/(float)CHANNEL_SAMPLE_LENGTH);
 
-      // DEBUGOUT("ADC channel_%d :%0.2fV \n", channel_read, (float)vout[channel_read]);
-      osDelay(3);
+    // DEBUGOUT("ADC channel_%d :%0.2fV \n", ch, (double)vout[ch]);
   }
   _sensors.thermistor_1 = vout[0]; 
   _sensors.thermistor_3 = vout[1]; 
   _sensors.thermistor_4 = vout[2]; 
   _sensors.pressure_1 = vout[3]; 
   _sensors.thermistor_2 = vout[4]; 
-  _sensors.power = vout[5]; 
+  _sensors.power = vout_rms[5]; 
   _sensors.pressure_2 = vout[6]; 
 }
 
