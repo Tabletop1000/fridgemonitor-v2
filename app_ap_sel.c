@@ -291,30 +291,30 @@ void fm_ap_sel_start(void)
           return;
         }
         printf("HTTP Server deinitialized\r\n");
-
+        
         status = sl_net_deinit(SL_NET_WIFI_AP_INTERFACE);
         if (status != SL_STATUS_OK) {
           printf("Ap deinit : 0x%lx\r\n", status);
           return;
         }
         printf("Wi-Fi AP deinitialized\r\n");
-
+        
         // Initialize the Wi-Fi client interface
-        // status = sl_net_init(SL_NET_WIFI_CLIENT_INTERFACE, &wifi_mqtt_client_configuration, NULL, NULL);
-        // if (status != SL_STATUS_OK) {
-        //   printf("Failed to start Wi-Fi client interface: 0x%lx\r\n", status);
-        //   return;
-        // }
-        // printf("Wi-Fi client interface initialized\r\n");
-
+        status = sl_net_init(SL_NET_WIFI_CLIENT_INTERFACE, &wifi_mqtt_client_configuration, NULL, NULL);
+        if (status != SL_STATUS_OK) {
+          printf("Failed to start Wi-Fi client interface: 0x%lx\r\n", status);
+          return;
+        }
+        printf("Wi-Fi client interface initialized\r\n");
+        
         sl_wifi_credential_t cred  = { 0 };
         sl_wifi_credential_id_t id = 2; //SL_NET_DEFAULT_WIFI_CLIENT_CREDENTIAL_ID;
         cred.type                  = SL_WIFI_PSK_CREDENTIAL;
         memcpy(cred.psk.value, pdata.wifi_client_credential, strlen((char *)pdata.wifi_client_credential));
-
+        
         status =
-          sl_net_set_credential(id, SL_NET_WIFI_PSK, pdata.wifi_client_credential, strlen((char *)pdata.wifi_client_credential));
-
+        sl_net_set_credential(id, SL_NET_WIFI_PSK, pdata.wifi_client_credential, strlen((char *)pdata.wifi_client_credential));
+        
         memset(&provisioned_access_point, 0, sizeof(provisioned_access_point));
         provisioned_access_point.ssid.length = strlen((char *)pdata.wifi_client_profile_ssid);
         memcpy(provisioned_access_point.ssid.value, pdata.wifi_client_profile_ssid, provisioned_access_point.ssid.length);
@@ -322,11 +322,12 @@ void fm_ap_sel_start(void)
         provisioned_access_point.encryption    = SL_WIFI_CCMP_ENCRYPTION;
         provisioned_access_point.credential_id = id;
         printf("Security Type:%s\n",security_type_to_string(provisioned_access_point.security));
-
+        
         //  Keeping the station ipv4 record in profile_id_0
         memcpy(&wifi_client_profile_local.config, &provisioned_access_point, sizeof(provisioned_access_point));
         memcpy(&pdata.profile, &wifi_client_profile_local, sizeof(wifi_client_profile_local));
-
+        
+        // TODO: remove all fm_write_data references from this file.
         fm_write_data(&pdata);
 
         app_state = COMPLETED_STATE;
@@ -343,13 +344,13 @@ void fm_ap_sel_start(void)
         if(newMQTT_data)
           {
             printf("saving mqtt settings to nvm...\n");
-            fm_write_data(&pdata);
+            //fm_write_data(&pdata);
             newMQTT_data = false;
           }
         break;
       case COMPLETED_STATE: {
         finished = true;
-        break;
+        return;
       }
     }
     if (disconnect_complete) {
@@ -626,9 +627,10 @@ static sl_status_t config_handler(sl_http_server_t *handle, sl_http_server_reque
     char json[512];
     int written = snprintf(json, sizeof(json),
                            "{\"ssid\":\"%s\",\"security_type\":\"%s\","
-                           "\"mqtt_server\":\"%s\",\"mqtt_username\":\"%s\"}",
+                           "\"mqtt_server\":\"%s\",\"mqtt_username\":\"%s\","
+                           "\"device_id\":\"%s\"}",
                            pdata.wifi_client_profile_ssid, security_type_to_string(pdata.profile.config.security),
-                           pdata.mqtt_server_address, pdata.mqtt_client_username);
+                           pdata.mqtt_server_address, pdata.mqtt_client_username, pdata.device_id);
 
     http_response.data = (uint8_t *)json;
     http_response.current_data_length = (uint32_t)written;
@@ -695,6 +697,10 @@ static sl_status_t config_handler(sl_http_server_t *handle, sl_http_server_reque
     if (extract_json_string(body_buffer, "username", temp, sizeof(temp)))
     {
       strncpy(pdata.mqtt_client_username, temp, sizeof(pdata.mqtt_client_username) - 1);
+    }
+    if (extract_json_string(body_buffer, "device_id", temp, sizeof(temp)))
+    {
+      strncpy(pdata.device_id, temp, sizeof(pdata.device_id) -1);
     }
 
     // Only overwrite the stored MQTT password if the client actually sent a non-empty one

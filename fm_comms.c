@@ -236,7 +236,9 @@ fm_error_t fm_comms_init()
   sl_status_t status;
 
   // Deinitialise and initialise the WiFi subsystem to start clean
+  sl_net_deinit(SL_NET_WIFI_AP_INTERFACE);
   sl_net_deinit(SL_NET_WIFI_CLIENT_INTERFACE);
+    osDelay(200U);
   status = sl_net_init(SL_NET_WIFI_CLIENT_INTERFACE,
                        &wifi_mqtt_client_configuration,
                        NULL,
