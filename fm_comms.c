@@ -55,9 +55,10 @@
 
 #define ENCRYPT_CONNECTION     0
 #define CERTIFICATE_INDEX      0
-#define KEEP_ALIVE_INTERVAL    0
+#define KEEP_ALIVE_INTERVAL    60 // seconds; detects a broker that disappears without closing TCP
 #define MQTT_CONNECT_TIMEOUT   5
 #define MQTT_KEEPALIVE_RETRIES 0
+#define MQTT_DISCONNECT_TIMEOUT 2000 // ms to wait for the NWP to tear down a stale MQTT session
 
 #define SEND_CREDENTIALS 1
 
@@ -434,6 +435,22 @@ fm_error_t fm_comms_mqtt_start()
 
   sl_status_t status;
 
+  // sl_mqtt_client_connect only accepts a client in the DISCONNECTED (or
+  // TA_INIT) state. If the broker dropped the connection, or a previous connect
+  // failed, the SDK can leave the client in TA_DISCONNECTED/CONNECTION_FAILED
+  // and expects the application to call disconnect to deinit the NWP client.
+  if (client.state == SL_MQTT_CLIENT_CONNECTED
+      || client.state == SL_MQTT_CLIENT_TA_DISCONNECTED
+      || client.state == SL_MQTT_CLIENT_CONNECTION_FAILED) {
+      DEBUGOUT("Cleaning up previous MQTT session (state %d)\r\n", client.state);
+      status = sl_mqtt_client_disconnect(&client, MQTT_DISCONNECT_TIMEOUT);
+      if (status != SL_STATUS_OK) {
+          DEBUGOUT("Failed to disconnect previous MQTT session: 0x%lx\r\n", status);
+          return FM_MQTT_ERROR;
+      }
+  }
+  is_mqtt_connected = 0U;
+
   if (ENCRYPT_CONNECTION) {
       // Load SSL CA certificate
       status = sl_net_set_credential(SL_NET_TLS_SERVER_CREDENTIAL_ID(CERTIFICATE_INDEX),
@@ -462,7 +479,7 @@ fm_error_t fm_comms_mqtt_start()
 
       client_credentails = malloc(malloc_size);
       if (client_credentails == NULL)
-        return SL_STATUS_ALLOCATION_FAILED;
+        return FM_MQTT_ERROR;
       memset(client_credentails, 0, malloc_size);
       client_credentails->username_length = username_length;
       client_credentails->password_length = password_length;

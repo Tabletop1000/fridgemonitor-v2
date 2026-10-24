@@ -445,9 +445,9 @@ fridge_monitor (void *argument)
               if(FM_SUCCESS == s){
                   fm_sensors_init();
                   state = OPERATING;
-              }else if(FM_MQTT_ERROR){
+              }else if(FM_MQTT_ERROR == s){
                   state = MQTT;
-                  osDelay(5000); // If MQTT failed, wait 2sec and try again
+                  osDelay(5000); // If MQTT failed, wait 5sec and try again
               } else {
                   state = FM_ERROR;
               }
